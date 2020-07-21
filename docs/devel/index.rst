@@ -30,4 +30,4 @@ Contents:
    reset
    s390-dasd-ipl
    clocks
-   vfio-over-socket
+   vfio-user
