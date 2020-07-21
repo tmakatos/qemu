@@ -34,4 +34,4 @@ Contents:
    clocks
    qom
    block-coroutine-wrapper
-   vfio-over-socket
+   vfio-user

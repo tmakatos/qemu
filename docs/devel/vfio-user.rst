@@ -1,22 +1,22 @@
 ***************************************
-VFIO-over-socket Protocol Specification
+vfio-user Protocol Specification
 ***************************************
 
 Version 0.1
 
 Introduction
 ============
-VFIO-over-socket, also known as vfio-user, is a protocol that allows a device
-to be virtualized in a separate process outside of QEMU. VFIO-over-socket
+vfio-user, also known as vfio-user, is a protocol that allows a device
+to be virtualized in a separate process outside of QEMU. vfio-user
 devices consist of a generic VFIO device type, living inside QEMU, which we
 call the client, and the core device implementation, living outside QEMU, which
-we call the server. VFIO-over-socket can be the main transport mechanism for
+we call the server. vfio-user can be the main transport mechanism for
 multi-process QEMU, however it can be used by other applications offering
 device virtualization. Explaining the advantages of a
 disaggregated/multi-process QEMU, and device virtualization outside QEMU in
 general, is beyond the scope of this document.
 
-This document focuses on specifying the VFIO-over-socket protocol. VFIO has
+This document focuses on specifying the vfio-user protocol. VFIO has
 been chosen for the following reasons:
 
 1) It is a mature and stable API, backed by an extensively used framework.
@@ -24,9 +24,9 @@ been chosen for the following reasons:
    reused.
 
 In a proof of concept implementation it has been demonstrated that using VFIO
-over a UNIX domain socket is a viable option. VFIO-over-socket is designed with
+over a UNIX domain socket is a viable option. vfio-user is designed with
 QEMU in mind, however it could be used by other client applications. The
-VFIO-over-socket protocol does not require that QEMU's VFIO client
+vfio-user protocol does not require that QEMU's VFIO client
 implementation is used in QEMU. None of the VFIO kernel modules are required
 for supporting the protocol, neither in the client nor the server, only the
 source header files are used.
@@ -49,7 +49,7 @@ two types of sockets without considering performance implications.
 
 This document does not yet describe any internal details of the server-side
 implementation, however QEMU's VFIO client implementation will have to be
-adapted according to this protocol in order to support VFIO-over-socket virtual
+adapted according to this protocol in order to support vfio-user virtual
 devices.
 
 VFIO
@@ -62,12 +62,12 @@ functionality in the kernel. QEMU has adopted VFIO to allow a guest virtual
 machine to directly access physical devices, instead of emulating them in
 software
 
-VFIO-over-socket reuses the core VFIO concepts defined in its API, but
+vfio-user reuses the core VFIO concepts defined in its API, but
 implements them as messages to be sent over a UNIX-domain socket. It does not
 change the kernel-based VFIO in any way, in fact none of the VFIO kernel
-modules need to be loaded to use VFIO-over-socket. It is also possible for QEMU
+modules need to be loaded to use vfio-user. It is also possible for QEMU
 to concurrently use the current kernel-based VFIO for one guest device, and use
-VFIO-over-socket for another device in the same guest.
+vfio-user for another device in the same guest.
 
 VFIO Device Model
 -----------------
@@ -181,7 +181,7 @@ configured into the server.
 
 Protocol Specification
 ======================
-To distinguish from the base VFIO symbols, all VFIO-over-socket symbols are
+To distinguish from the base VFIO symbols, all vfio-user symbols are
 prefixed with vfio_user or VFIO_USER. In revision 0.1, all data is in the
 little-endian format, although this may be relaxed in future revision in cases
 where the client and server are both big-endian. The messages are formatted
@@ -310,9 +310,9 @@ message request is sent from the client or the server.
 
 Header
 ------
-All messages are preceded by a 16 byte header that contains basic information
-about the message. The header is followed by message-specific data described
-in the sections below.
+All messages, both command messages and reply messages, are preceded by a 16
+byte header that contains basic information about the message. The header is
+followed by message-specific data described in the sections below.
 
 +----------------+--------+-------------+
 | Name           | Offset | Size        |
@@ -1121,7 +1121,7 @@ addressed in a future protocol version.
 Live Migration
 --------------
 Currently live migration is not supported for devices passed through via VFIO,
-therefore it is not supported for VFIO-over-socket, either. This is being
+therefore it is not supported for vfio-user, either. This is being
 actively worked on in the "Add migration support for VFIO devices" (v25) patch
 series.
 
