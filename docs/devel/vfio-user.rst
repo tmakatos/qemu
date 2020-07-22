@@ -381,7 +381,7 @@ included:
 +--------------+--------+---------------------------------------------------+
 | Name         | Type   | Description                                       |
 +==============+========+===================================================+
-| version      | object | {“major”: <number>, “minor”: <number>}            |
+| version      | object | {"major": <number>, "minor": <number>}            |
 |              |        | Version supported by the sender, e.g. “0.1”.      |
 +--------------+--------+---------------------------------------------------+
 | type         | string | Fixed to “vfio-user”.                             |
