@@ -4,6 +4,8 @@ vfio-user Protocol Specification
 
 Version 0.1
 
+.. contents:: Table of Contents
+
 Introduction
 ============
 vfio-user, also known as vfio-user, is a protocol that allows a device
