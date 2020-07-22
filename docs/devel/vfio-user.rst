@@ -230,10 +230,9 @@ Server Disconnection
 A server disconnecting from the client may indicate that:
 
 1) A virtual device has been restarted, either intentionally (e.g. because of a
-device update) or unintentionally (e.g. because of a crash). In any case, the
-virtual device will come back so the client should not do anything (e.g. simply
-reconnect and retry failed operations).
-
+   device update) or unintentionally (e.g. because of a crash). In any case, the
+   virtual device will come back so the client should not do anything (e.g.
+   simply reconnect and retry failed operations).
 2) A virtual device has been shut down with no intention to be restarted.
 
 It is impossible for the client to know whether or not a failure is
