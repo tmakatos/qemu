@@ -10,46 +10,44 @@ Version 0.1
 
 Introduction
 ============
-vfio-user, also known as vfio-user, is a protocol that allows a device
-to be virtualized in a separate process outside of QEMU. vfio-user
-devices consist of a generic VFIO device type, living inside QEMU, which we
-call the client, and the core device implementation, living outside QEMU, which
-we call the server. vfio-user can be the main transport mechanism for
-multi-process QEMU, however it can be used by other applications offering
-device virtualization. Explaining the advantages of a
-disaggregated/multi-process QEMU, and device virtualization outside QEMU in
-general, is beyond the scope of this document.
+vfio-user is a protocol that allows a device to be emulated in a separate
+process outside of a Virtual Machine Monitor (VMM). vfio-user devices consist
+of a generic VFIO device type, living inside the VMM, which we call the client,
+and the core device implementation, living outside the VMM, which we call the
+server.
 
-This document focuses on specifying the vfio-user protocol. VFIO has
-been chosen for the following reasons:
+The `Linux VFIO ioctl interface <https://www.kernel.org/doc/html/latest/driver-api/vfio.html>`_
+been chosen as the base for this protocol for the following reasons:
 
 1) It is a mature and stable API, backed by an extensively used framework.
-2) The existing VFIO client implementation (qemu/hw/vfio/) can be largely
-   reused.
+2) The existing VFIO client implementation in QEMU (qemu/hw/vfio/) can be
+   largely reused.
 
-In a proof of concept implementation it has been demonstrated that using VFIO
-over a UNIX domain socket is a viable option. vfio-user is designed with
-QEMU in mind, however it could be used by other client applications. The
-vfio-user protocol does not require that QEMU's VFIO client
-implementation is used in QEMU. None of the VFIO kernel modules are required
-for supporting the protocol, neither in the client nor the server, only the
-source header files are used.
+.. Note::
+   In a proof of concept implementation it has been demonstrated that using VFIO
+   over a UNIX domain socket is a viable option. vfio-user is designed with
+   QEMU in mind, however it could be used by other client applications. The
+   vfio-user protocol does not require that QEMU's VFIO client  implementation
+   is used in QEMU.
+
+None of the VFIO kernel modules are required for supporting the protocol,
+neither in the client nor the server, only the source header files are used.
 
 The main idea is to allow a virtual device to function in a separate process in
 the same host over a UNIX domain socket. A UNIX domain socket (AF_UNIX) is
-chosen because we can trivially send file descriptors over it, which in turn
+chosen because file descriptors can be trivially sent over it, which in turn
 allows:
 
-* Sharing of guest memory for DMA with the virtual device process.
-* Sharing of virtual device memory with the guest for fast MMIO.
+* Sharing of client memory for DMA with the server.
+* Sharing of server memory with the client for fast MMIO.
 * Efficient sharing of eventfd's for triggering interrupts.
 
-However, other socket types could be used which allows the virtual device
-process to run in a separate guest in the same host (AF_VSOCK) or remotely
-(AF_INET). Theoretically the underlying transport doesn't necessarily have to
-be a socket, however we don't examine such alternatives. In this document we
-focus on using a UNIX domain socket and introduce basic support for the other
-two types of sockets without considering performance implications.
+Other socket types could be used which allow the server to run in a separate
+guest in the same host (AF_VSOCK) or remotely (AF_INET). Theoretically the
+underlying transport does not necessarily have to be a socket, however we do
+not examine such alternatives. In this protocol version we focus on using a
+UNIX domain socket and introduce basic support for the other two types of
+sockets without considering performance implications.
 
 This document does not yet describe any internal details of the server-side
 implementation, however QEMU's VFIO client implementation will have to be
