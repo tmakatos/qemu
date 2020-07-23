@@ -49,6 +49,10 @@ not examine such alternatives. In this protocol version we focus on using a
 UNIX domain socket and introduce basic support for the other two types of
 sockets without considering performance implications.
 
+While passing of file descriptors is desirable for performance reasons, it is
+not necessary neither for the client nor for the server to support it in order
+to implement the protocol. There is always an in-band, message-passing fall
+back mechanism.
 
 VFIO
 ====
