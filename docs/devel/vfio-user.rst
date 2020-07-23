@@ -78,13 +78,12 @@ references to the existing interface are called the ioctl() implementation in
 this document.
 
 The following sections describe the set of messages that implement the VFIO
-device model over a UNIX domain socket. In many cases, the messages are direct
-translations of data structures used in the ioctl() implementation. Messages
-derived from ioctl()s will have a name derived from the ioctl() command name.
-E.g., the VFIO_GET_INFO ioctl() command becomes a VFIO_USER_GET_INFO message.
-The purpose for this reuse is to share as much code as feasible with the
-ioctl() implementation.
-
+interface over a socket. In many cases, the messages are direct translations of
+data structures used in the ioctl() implementation. Messages derived from
+ioctl()s will have a name derived from the ioctl() command name.  E.g., the
+VFIO_GET_INFO ioctl() command becomes a VFIO_USER_GET_INFO message.  The
+purpose of this reuse is to share as much code as feasible with the ioctl()
+implementation.
 
 Connection Initiation
 ^^^^^^^^^^^^^^^^^^^^^
@@ -1123,10 +1122,10 @@ VFIO groups and containers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The current VFIO implementation includes group and container idioms that
-describe how a device relates to the host IOMMU. In the VFIO over socket
-implementation, the IOMMU is implemented in SW by the client, and isn't visible
-to the server. The simplest idea is for the client is to put each device into
-its own group and container.
+describe how a device relates to the host IOMMU. In the vfio-user
+implementation, the IOMMU is implemented in SW by the client, and is not
+visible to the server. The simplest idea would be that the client put each
+device into its own group and container.
 
 Backend Program Conventions
 ---------------------------
