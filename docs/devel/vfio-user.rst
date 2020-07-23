@@ -49,10 +49,6 @@ not examine such alternatives. In this protocol version we focus on using a
 UNIX domain socket and introduce basic support for the other two types of
 sockets without considering performance implications.
 
-This document does not yet describe any internal details of the server-side
-implementation, however QEMU's VFIO client implementation will have to be
-adapted according to this protocol in order to support vfio-user virtual
-devices.
 
 VFIO
 ====
