@@ -85,12 +85,6 @@ E.g., the VFIO_GET_INFO ioctl() command becomes a VFIO_USER_GET_INFO message.
 The purpose for this reuse is to share as much code as feasible with the
 ioctl() implementation.
 
-Client and Server
-^^^^^^^^^^^^^^^^^
-The socket connects two processes together: a client process and a server
-process. In the context of this document, the client process is the process
-emulating a guest virtual machine, such as QEMU. The server process is a
-process that provides device emulation.
 
 Connection Initiation
 ^^^^^^^^^^^^^^^^^^^^^
