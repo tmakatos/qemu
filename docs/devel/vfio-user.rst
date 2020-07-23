@@ -72,10 +72,10 @@ kernel-based VFIO for one device, and vfio-user for another device.
 
 VFIO Device Model
 -----------------
-A device under VFIO presents a standard VFIO model to the user process. Many
-of the VFIO operations in the existing kernel model use the ioctl() system
-call, and references to the existing model are called the ioctl()
-implementation in this document.
+A device under VFIO presents a standard interface to the user process. Many of
+the VFIO operations in the existing interface use the ioctl() system call, and
+references to the existing interface are called the ioctl() implementation in
+this document.
 
 The following sections describe the set of messages that implement the VFIO
 device model over a UNIX domain socket. In many cases, the messages are direct
