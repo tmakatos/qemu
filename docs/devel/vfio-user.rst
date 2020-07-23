@@ -57,19 +57,18 @@ back mechanism.
 VFIO
 ====
 VFIO is a framework that allows a physical device to be securely passed through
-to a user space process; the kernel does not drive the device at all.
-Typically, the user space process is a VM and the device is passed through to
-it in order to achieve high performance. VFIO provides an API and the required
-functionality in the kernel. QEMU has adopted VFIO to allow a guest virtual
-machine to directly access physical devices, instead of emulating them in
-software
+to a user space process; the device-specific kernel driver does not drive the
+device at all.  Typically, the user space process is a VMM and the device is
+passed through to it in order to achieve high performance. VFIO provides an API
+and the required functionality in the kernel. QEMU has adopted VFIO to allow a
+guest to directly access physical devices, instead of emulating them in
+software.
 
-vfio-user reuses the core VFIO concepts defined in its API, but
-implements them as messages to be sent over a UNIX-domain socket. It does not
-change the kernel-based VFIO in any way, in fact none of the VFIO kernel
-modules need to be loaded to use vfio-user. It is also possible for QEMU
-to concurrently use the current kernel-based VFIO for one guest device, and use
-vfio-user for another device in the same guest.
+vfio-user reuses the core VFIO concepts defined in its API, but implements them
+as messages to be sent over a socket. It does not change the kernel-based VFIO
+in any way, in fact none of the VFIO kernel modules need to be loaded to use
+vfio-user. It is also possible for the client to concurrently use the current
+kernel-based VFIO for one device, and vfio-user for another device.
 
 VFIO Device Model
 -----------------
