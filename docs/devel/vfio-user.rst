@@ -2,7 +2,9 @@
 vfio-user Protocol Specification
 ********************************
 
+-----------
 Version 0.1
+-----------
 
 .. contents:: Table of Contents
 
