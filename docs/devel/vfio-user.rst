@@ -289,6 +289,8 @@ earlier in the disconnect section.
 Defining a retry and timeout scheme is deferred to a future version of the
 protocol.
 
+.. _Commands:
+
 Commands
 --------
 The following table lists the VFIO message command IDs, and whether the
