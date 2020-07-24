@@ -93,11 +93,11 @@ apply to the session. The client replies with a compatible version and set of
 capabilities it will support, or closes the connection if it cannot support the
 advertised version.
 
-Guest Memory Configuration
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+DMA Memory Configuration
+^^^^^^^^^^^^^^^^^^^^^^^^
 The client uses VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP messages to inform
-the server of the valid guest DMA ranges that the server can access on behalf
-of a device. Guest memory may be accessed by the server via VFIO_USER_DMA_READ
+the server of the valid DMA ranges that the server can access on behalf
+of a device. DMA memory may be accessed by the server via VFIO_USER_DMA_READ
 and VFIO_USER_DMA_WRITE messages over the socket.
 
 An optimization for server access to guest memory is for the client to provide
