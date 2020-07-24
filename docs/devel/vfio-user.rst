@@ -299,31 +299,31 @@ message command is sent from the client or the server.
 +----------------------------------+---------+-------------------+
 | Name                             | Command | Request Direction |
 +==================================+=========+===================+
-| VFIO_USER_VERSION                | 1       | server → client   |
+| VFIO_USER_VERSION                | 1       | server -> client  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_MAP                | 2       | client → server   |
+| VFIO_USER_DMA_MAP                | 2       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_UNMAP              | 3       | client → server   |
+| VFIO_USER_DMA_UNMAP              | 3       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_INFO        | 4       | client → server   |
+| VFIO_USER_DEVICE_GET_INFO        | 4       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_REGION_INFO | 5       | client → server   |
+| VFIO_USER_DEVICE_GET_REGION_INFO | 5       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_GET_IRQ_INFO    | 6       | client → server   |
+| VFIO_USER_DEVICE_GET_IRQ_INFO    | 6       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DEVICE_SET_IRQS        | 7       | client → server   |
+| VFIO_USER_DEVICE_SET_IRQS        | 7       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_REGION_READ            | 8       | client → server   |
+| VFIO_USER_REGION_READ            | 8       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_REGION_WRITE           | 9       | client → server   |
+| VFIO_USER_REGION_WRITE           | 9       | client -> server  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_READ               | 10      | server → client   |
+| VFIO_USER_DMA_READ               | 10      | server -> client  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_DMA_READ               | 11      | server → client   |
+| VFIO_USER_DMA_WRITE              | 11      | server -> client  |
 +----------------------------------+---------+-------------------+
-| VFIO_USER_VM_INTERRUPT           | 12      | server → client   |
+| VFIO_USER_VM_INTERRUPT           | 12      | server -> client  |
 +----------------------------------+---------+-------------------+
-| VFIO_DEVICE_RESET                | 13      | client → server   |
+| VFIO_USER_DEVICE_RESET           | 13      | client -> server  |
 +----------------------------------+---------+-------------------+
 
 Header
