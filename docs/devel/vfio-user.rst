@@ -207,10 +207,21 @@ protocol.
 
 Command Concurrency
 -------------------
-There can be multiple outstanding requests per virtual device, e.g. a
-frame buffer where the guest does multiple stores to the virtual device. The
-server can execute and reorder non-conflicting requests in parallel, depending
-on the device semantics.
+There can be multiple outstanding commands per virtual device, e.g. a frame
+buffer where the guest does multiple stores to the virtual device.  Commands
+must be executed in the order they are received.  The server can execute and
+reorder non-conflicting commands in parallel, depending on the device
+semantics.
+
+.. Note::
+   For instance, a client can issue the following operations back to back
+   without waiting for the first two to complete:
+
+   1. map a DMA region 
+   2. trigger some device-specific operation that results in data being read
+      into that DMA region, and
+   3. unmap the DMA region
+
 
 Socket Disconnection Behavior
 -----------------------------
