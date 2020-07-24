@@ -247,8 +247,16 @@ In cases where the disconnection is expected (e.g. the client exits), no new
 commands will be sent anyway so this situation does not pose a problem. The
 control stack will clean up accordingly.
 
-Parametrizing this behaviour by having the virtual device advertise a
-reasonable reconnect is deferred to a future version of the protocol.
+Parameterizing this behaviour by having the server advertise a reasonable
+reconnect is deferred to a future version of the protocol.
+
+Recovering state is implementation-specific. The protocol provides all the
+building blocks and does not enforce a particular mechanism:
+
+* Recovering state must be initiated by the client since it is the master in
+  the vfio-user model. Interrupts/DMA may have to be reconfigured,
+  unacknowledged requests may have to be re-submitted, etc.
+* The server may have to persistently store device state.
 
 Client Disconnection
 ^^^^^^^^^^^^^^^^^^^^
