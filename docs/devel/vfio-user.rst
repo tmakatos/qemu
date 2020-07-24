@@ -409,10 +409,9 @@ included:
 +--------------+--------+---------------------------------------------------+
 | Name         | Type   | Description                                       |
 +==============+========+===================================================+
-| version      | object | {"major": <number>, "minor": <number>}            |
-|              |        | Version supported by the sender, e.g. “0.1”.      |
-+--------------+--------+---------------------------------------------------+
-| type         | string | Fixed to “vfio-user”.                             |
+| version      | object | ``{"major": <number>, "minor": <number>}``        |
+|              |        |                                                   |
+|              |        | Version supported by the sender, e.g. "0.1".      |
 +--------------+--------+---------------------------------------------------+
 | capabilities | array  | Reserved. Can be omitted for v0.1, otherwise must |
 |              |        | be empty.                                         |
@@ -431,7 +430,6 @@ VFIO_USER_VERSION reply according to the following rules.
   version proposed.
 * The capability list must be a subset of those proposed. If the client
   requires a capability the server did not include, it closes the connection.
-* If type is not “vfio-user”, the client closes the connection.
 
 The protocol major version will only change when incompatible protocol changes
 are made, such as changing the message format. The minor version may change
