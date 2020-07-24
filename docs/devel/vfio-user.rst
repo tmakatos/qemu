@@ -578,16 +578,16 @@ VFIO device info format
 | num_irqs    | 30     | 4                        |
 +-------------+--------+--------------------------+
 
-* argz is reserved in vfio-user, it is only used in the ioctl() VFIO
+* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
   implementation.
-* flags contains the following device attributes.
+* *flags* contains the following device attributes.
 
-  * VFIO_DEVICE_FLAGS_RESET indicates the device supports the
+  * VFIO_DEVICE_FLAGS_RESET indicates that the device supports the
     VFIO_USER_DEVICE_RESET message.
-  * VFIO_DEVICE_FLAGS_PCI indicates the device is a PCI device.
+  * VFIO_DEVICE_FLAGS_PCI indicates that the device is a PCI device.
 
-* num_regions is the number of memory regions the device exposes.
-* num_irqs is the number of distinct interrupt types the device supports.
+* *num_regions* is the number of memory regions that the device exposes.
+* *num_irqs* is the number of distinct interrupt types that the device supports.
 
 This version of the protocol only supports PCI devices. Additional devices may
 be supported in future versions.
@@ -652,26 +652,27 @@ VFIO region info format
 | offset     | 42     | 8                            |
 +------------+--------+------------------------------+
 
-* argz is reserved in vfio-user, it is only used in the ioctl() VFIO
+* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
   implementation.
-* flags are attributes of the region:
+* *flags* are attributes of the region:
 
-  * VFIO_REGION_INFO_FLAG_READ allows client read access to the region.
-  * VFIO_REGION_INFO_FLAG_WRITE allows client write access region.
-  * VFIO_REGION_INFO_FLAG_MMAP specifies the client can mmap() the region. When
-    this flag is set, the reply will include a file descriptor in its meta-data.
-    On AF_UNIX sockets, the file descriptors will be passed as SCM_RIGHTS type
-    ancillary data.
-  * VFIO_REGION_INFO_FLAG_CAPS indicates additional capabilities found in the
+  * *VFIO_REGION_INFO_FLAG_READ* allows client read access to the region.
+  * *VFIO_REGION_INFO_FLAG_WRITE* allows client write access to the region.
+  * *VFIO_REGION_INFO_FLAG_MMAP* specifies the client can mmap() the region.
+    When this flag is set, the reply will include a file descriptor in its
+    meta-data. On AF_UNIX sockets, the file descriptors will be passed as
+    SCM_RIGHTS type ancillary data.
+  * *VFIO_REGION_INFO_FLAG_CAPS* indicates additional capabilities found in the
     reply.
 
-* index is the index of memory region being queried, it is the only field that
-  is required to be set in the request message.
-* cap_offset describes where additional region capabilities can be found.
+* *index* is the index of memory region being queried, it is the only field
+  that is required to be set in the command message.
+* *cap_offset* describes where additional region capabilities can be found.
   cap_offset is relative to the beginning of the VFIO region info structure.
-  The data structure it points is a VFIO cap header defined in ``<sys/vfio.h>``.
-* size is the size of the region.
-* offset is the offset given to the mmap() system call for regions with the
+  The data structure it points is a VFIO cap header defined in
+  ``<sys/vfio.h>``.
+* *size* is the size of the region.
+* *offset* is the offset given to the mmap() system call for regions with the
   MMAP attribute. It is also used as the base offset when mapping a VFIO
   sparse mmap area, described below.
 
@@ -696,9 +697,9 @@ VFIO cap header format
 | next    | 4      | 4    |
 +---------+--------+------+
 
-* id is the capability identity.
-* version is a capability-specific version number.
-* next specifies the offset of the next capability in the capability list. It
+* *id* is the capability identity.
+* *version* is a capability-specific version number.
+* *next* specifies the offset of the next capability in the capability list. It
   is relative to the beginning of the VFIO region info structure.
 
 VFIO sparse mmap
@@ -737,8 +738,8 @@ VFIO region info cap sparse mmap
 | ...      |        |      |
 +----------+--------+------+
 
-* nr_areas is the number of sparse mmap areas in the region.
-* offset and size describe a single area that can be mapped by the client.
+* *nr_areas* is the number of sparse mmap areas in the region.
+* *offset* and size describe a single area that can be mapped by the client.
   There will be nr_areas pairs of offset and size. The offset will be added to
   the base offset given in the VFIO_USER_DEVICE_GET_REGION_INFO to form the
   offset argument of the subsequent mmap() call.
@@ -799,19 +800,19 @@ VFIO IRQ info format
 | count | 30     | 4                         |
 +-------+--------+---------------------------+
 
-* argz is reserved in vfio-user, it is only used in the ioctl() VFIO
+* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
   implementation.
-* flags defines IRQ attributes:
+* *flags* defines IRQ attributes:
 
-  * VFIO_IRQ_INFO_EVENTFD indicates the IRQ type can support server eventfd
+  * *VFIO_IRQ_INFO_EVENTFD* indicates the IRQ type can support server eventfd
     signalling.
-  * VFIO_IRQ_INFO_MASKABLE indicates that the IRQ type supports the MASK and
+  * *VFIO_IRQ_INFO_MASKABLE* indicates that the IRQ type supports the MASK and
     UNMASK actions in a VFIO_USER_DEVICE_SET_IRQS message.
-  * VFIO_IRQ_INFO_AUTOMASKED indicates the IRQ type masks itself after being
+  * *VFIO_IRQ_INFO_AUTOMASKED* indicates the IRQ type masks itself after being
     triggered, and the client must send an UNMASK action to receive new
     interrupts.
-  * VFIO_IRQ_INFO_NORESIZE indicates VFIO_USER_SET_IRQS operations setup
-    interrupts as a set, and new subindexes cannot be enabled without disabling
+  * *VFIO_IRQ_INFO_NORESIZE* indicates VFIO_USER_SET_IRQS operations setup
+    interrupts as a set, and new sub-indexes cannot be enabled without disabling
     the entire type.
 
 * index is the index of IRQ type being queried, it is the only field that is
@@ -879,36 +880,36 @@ VFIO IRQ info format
 | data  | 38     | variable                     |
 +-------+--------+------------------------------+
 
-* argz is reserved in vfio-user, it is only used in the ioctl() VFIO
+* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
   implementation.
-* flags defines the action performed on the interrupt range. The DATA flags
+* *flags* defines the action performed on the interrupt range. The DATA flags
   describe the data field sent in the message; the ACTION flags describe the
   action to be performed. The flags are mutually exclusive for both sets.
 
-  * VFIO_IRQ_SET_DATA_NONE indicates there is no data field in the request. The
-    action is performed unconditionally.
-  * VFIO_IRQ_SET_DATA_BOOL indicates the data field is an array of boolean
+  * *VFIO_IRQ_SET_DATA_NONE* indicates there is no data field in the command.
+    The action is performed unconditionally.
+  * *VFIO_IRQ_SET_DATA_BOOL* indicates the data field is an array of boolean
     bytes. The action is performed if the corresponding boolean is true.
-  * VFIO_IRQ_SET_DATA_EVENTFD indicates an array of event file descriptors was
-    sent in the message meta-data. These descriptors will be signalled when the
-    action defined by the action flags occurs. In AF_UNIX sockets, the
+  * *VFIO_IRQ_SET_DATA_EVENTFD* indicates an array of event file descriptors
+    was sent in the message meta-data. These descriptors will be signalled when
+    the action defined by the action flags occurs. In AF_UNIX sockets, the
     descriptors are sent as SCM_RIGHTS type ancillary data.
-  * VFIO_IRQ_SET_ACTION_MASK indicates a masking event. It can be used with
+  * *VFIO_IRQ_SET_ACTION_MASK* indicates a masking event. It can be used with
     VFIO_IRQ_SET_DATA_BOOL or VFIO_IRQ_SET_DATA_NONE to mask an interrupt, or
     with VFIO_IRQ_SET_DATA_EVENTFD to generate an event when the guest masks
     the interrupt.
-  * VFIO_IRQ_SET_ACTION_UNMASK indicates an unmasking event. It can be used
+  * *VFIO_IRQ_SET_ACTION_UNMASK* indicates an unmasking event. It can be used
     with VFIO_IRQ_SET_DATA_BOOL or VFIO_IRQ_SET_DATA_NONE to unmask an
     interrupt, or with VFIO_IRQ_SET_DATA_EVENTFD to generate an event when the
     guest unmasks the interrupt.
-  * VFIO_IRQ_SET_ACTION_TRIGGER indicates a triggering event. It can be used
+  * *VFIO_IRQ_SET_ACTION_TRIGGER* indicates a triggering event. It can be used
     with VFIO_IRQ_SET_DATA_BOOL or VFIO_IRQ_SET_DATA_NONE to trigger an
     interrupt, or with VFIO_IRQ_SET_DATA_EVENTFD to generate an event when the
-    guest triggers the interrupt.
+    server triggers the interrupt.
 
-* index is the index of IRQ type being setup.
-* start is the start of the subindex being set.
-* count describes the number of sub-indexes being set. As a special case, a
+* *index* is the index of IRQ type being setup.
+* *start* is the start of the sub-index being set.
+* *count* describes the number of sub-indexes being set. As a special case, a
   count of 0 with data flags of VFIO_IRQ_SET_DATA_NONE disables all interrupts
   of the index data is an optional field included when the
   VFIO_IRQ_SET_DATA_BOOL flag is present. It contains an array of booleans
@@ -949,10 +950,10 @@ REGION Read/Write Data
 | Data   | 34     | variable |
 +--------+--------+----------+
 
-* Offset into the region being accessed.
-* Region is the index of the region being accessed.
-* Count is the size of the data to be transferred.
-* Data is the data to be read or written.
+* *Offset* into the region being accessed.
+* *Region* is the index of the region being accessed.
+* *Count* is the size of the data to be transferred.
+* *Data* is the data to be read or written.
 
 The server can access client memory with VFIO_USER_DMA_READ and
 VFIO_USER_DMA_WRITE messages. These also share a common data structure that
@@ -971,10 +972,10 @@ DMA Read/Write Data
 | Data    | 30     | variable |
 +---------+--------+----------+
 
-* Address is the area of guest memory being accessed. This address must have
-  been exported to the server with a VFIO_USER_DMA_MAP message.
-* Count is the size of the data to be transferred.
-* Data is the data to be read or written.
+* *Address* is the area of client memory being accessed. This address must have
+  been previously exported to the server with a VFIO_USER_DMA_MAP message.
+* *Count* is the size of the data to be transferred.
+* *Data* is the data to be read or written.
 
 Address and count can also be accessed as ``struct iovec`` from ``<sys/uio.h>``.
 
@@ -1122,9 +1123,10 @@ Interrupt info format
 | Sub-index | 22     | 4   |
 +----------+--------+------+
 
-* Index is the interrupt index; it is the same value used in VFIO_USER_SET_IRQS.
-* Subindex is relative to the index, e.g., the vector number used in PCI MSI/X
-  type interrupts.
+* *Index* is the interrupt index; it is the same value used in
+  VFIO_USER_SET_IRQS.
+* *Sub-index* is relative to the index, e.g., the vector number used in PCI
+  MSI/X type interrupts.
 
 VFIO_USER_DEVICE_RESET
 ----------------------
