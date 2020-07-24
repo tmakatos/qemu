@@ -438,11 +438,12 @@ Both the client and server must support all minor versions less than the
 maximum minor version it supports. E.g., an implementation that supports
 version 1.3 must also support 1.0 through 1.2.
 
-VFIO_USER_DMA_MAP
------------------
+When making a change to this specification, the protocol version number must
+be included in the form "added in version X.Y"
 
-VFIO_USER_DMA_UNMAP
--------------------
+
+VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP
+-----------------------------------------
 
 Message Format
 ^^^^^^^^^^^^^^
