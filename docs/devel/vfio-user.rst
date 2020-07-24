@@ -331,8 +331,8 @@ message command is sent from the client or the server.
 
 Header
 ------
-All messages, both command messages and reply messages, are preceded by a 16
-byte header that contains basic information about the message. The header is
+All messages, both command messages and reply messages, are preceded by a
+header that contains basic information about the message. The header is
 followed by message-specific data described in the sections below.
 
 .. Shall we make command 2 bytes instead of 4?
@@ -938,7 +938,7 @@ REGION Read/Write Data
 
 The server can access client memory with VFIO_USER_DMA_READ and
 VFIO_USER_DMA_WRITE messages. These also share a common data structure that
-appears after the 16 byte message header.
+appears after the message header.
 
 DMA Read/Write Data
 ^^^^^^^^^^^^^^^^^^^
