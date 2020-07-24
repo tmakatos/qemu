@@ -276,14 +276,17 @@ accordingly.
 
 Request Retry and Response Timeout
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-QEMU's VFIO retries certain operations if they fail. While this makes sense for
-real HW, we don't know for sure whether it makes sense for virtual devices. A
-failed request is a request that has been successfully sent and has been
-responded to with an error code. Failure to send the request in the first place
+A failed command is a command that has been successfully sent and has been
+responded to with an error code. Failure to send the command in the first place
 (e.g. because the socket is disconnected) is a different type of error examined
 earlier in the disconnect section.
 
-Defining a retry and timeout scheme if deferred to a future version of the
+.. Note::
+   QEMU's VFIO retries certain operations if they fail. While this makes sense
+   for real HW, we don't know for sure whether it makes sense for virtual
+   devices.
+
+Defining a retry and timeout scheme is deferred to a future version of the
 protocol.
 
 Commands
