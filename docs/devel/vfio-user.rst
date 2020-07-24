@@ -184,11 +184,18 @@ reuse of the native VFIO structs.
 
 Socket
 ------
-A single UNIX domain socket is assumed to be used for each device. The location
-of the socket is implementation-specific. Multiplexing clients, devices, and
-servers over the same socket is not supported in this version of the protocol,
-but a device ID field exists in the message header so that a future support can
-be added without a major version change.
+
+A server can serve:
+
+1) one or more clients, and/or
+2) one or more virtual devices, belonging to one or more clients.
+
+The current protocol specification requires a dedicated socket per
+client/server connection. It is a server-side implementation detail whether a
+single server handles multiple virtual devices from the same or multiple
+clients. The location of the socket is implementation-specific. Multiplexing
+clients, devices, and servers over the same socket is not supported in this
+version of the protocol.
 
 Authentication
 --------------
@@ -301,18 +308,18 @@ All messages, both command messages and reply messages, are preceded by a 16
 byte header that contains basic information about the message. The header is
 followed by message-specific data described in the sections below.
 
+.. Shall we make command 2 bytes instead of 4?
+
 +----------------+--------+-------------+
 | Name           | Offset | Size        |
 +================+========+=============+
-| Device ID      | 0      | 2           |
+| Message ID     | 0      | 2           |
 +----------------+--------+-------------+
-| Message ID     | 2      | 2           |
+| Command        | 2      | 4           |
 +----------------+--------+-------------+
-| Command        | 4      | 4           |
+| Message size   | 6      | 4           |
 +----------------+--------+-------------+
-| Message size   | 8      | 4           |
-+----------------+--------+-------------+
-| Flags          | 12     | 4           |
+| Flags          | 10     | 4           |
 +----------------+--------+-------------+
 |                | +-----+------------+ |
 |                | | Bit | Definition | |
@@ -321,22 +328,30 @@ followed by message-specific data described in the sections below.
 |                | +-----+------------+ |
 |                | | 1   | No_reply   | |
 |                | +-----+------------+ |
+|                | | 2   | Error      | |
+|                | +-----+------------+ |
 +----------------+--------+-------------+
-| <message data> | 16     | variable    |
+| Error          | 14     | 4           |
++----------------+--------+-------------+
+| <message data> | 18     | variable    |
 +----------------+--------+-------------+
 
-* Device ID identifies the destination device of the message. This field is
-  reserved when the server only supports one device per socket.
-* Message ID identifies the message, and is used in the message acknowledgement.
-* Command specifies the command to be executed, listed in the Command Table.
-* Message size contains the size of the entire message, including the header.
-* Flags contains attributes of the message:
+* *Message ID* identifies the message, and is used echoed in the reply message.
+* *Command* specifies the command to be executed, listed in Commands_.
+* *Message size* contains the size of the entire message, including the header.
+* *Flags* contains attributes of the message:
 
-  * The reply bit differentiates request messages from reply messages. A reply
-    message acknowledges a previous request with the same message ID.
-  * No_reply indicates that no reply is needed for this request. This is
-    commonly used when multiple requests are sent, and only the last needs
+  * The reply bit differentiates command messages from reply messages. A reply
+    message acknowledges a previous command with the same message ID.
+  * No_reply indicates that no reply is needed for this command. This is
+    commonly used when multiple commands are sent, and only the last needs
     acknowledgement.
+
+* *Error* is a UNIX errno value set only in the reply message. It is reserved in
+  the command message.
+
+Each command message in Commands_ must be replied to with a reply message,
+which consists of the header with the reply bit set, plus any additional data.
 
 VFIO_USER_VERSION
 -----------------
@@ -347,15 +362,15 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | 0                      |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 1                      |
 +--------------+------------------------+
-| Message size | 16 + version length    |
+| Message size | 18 + version length    |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | Version      | JSON byte array        |
 +--------------+------------------------+
@@ -410,15 +425,15 @@ Message Format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | 0                      |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | MAP=2, UNMAP=3         |
 +--------------+------------------------+
-| Message size | 16 + table size        |
+| Message size | 18 + table size        |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | Table        | array of table entries |
 +--------------+------------------------+
@@ -479,15 +494,15 @@ Message format
 +--------------+----------------------------+
 | Name         | Value                      |
 +==============+============================+
-| Device ID    | <ID>                       |
-+--------------+----------------------------+
 | Message ID   | <ID>                       |
 +--------------+----------------------------+
 | Command      | 4                          |
 +--------------+----------------------------+
-| Message size | 16 in request, 32 in reply |
+| Message size | 18 in command, 34 in reply |
 +--------------+----------------------------+
 | Flags        | Reply bit set in reply     |
++--------------+----------------------------+
+| Error        | 0/errno                    |
 +--------------+----------------------------+
 | Device info  | VFIO device info           |
 +--------------+----------------------------+
@@ -503,9 +518,9 @@ VFIO device info format
 +-------------+--------+--------------------------+
 | Name        | Offset | Size                     |
 +=============+========+==========================+
-| argsz       | 16     | 4                        |
+| argsz       | 18     | 4                        |
 +-------------+--------+--------------------------+
-| flags       | 20     | 4                        |
+| flags       | 22     | 4                        |
 +-------------+--------+--------------------------+
 |             | +-----+-------------------------+ |
 |             | | Bit | Definition              | |
@@ -515,9 +530,9 @@ VFIO device info format
 |             | | 1   | VFIO_DEVICE_FLAGS_PCI   | |
 |             | +-----+-------------------------+ |
 +-------------+--------+--------------------------+
-| num_regions | 24     | 4                        |
+| num_regions | 26     | 4                        |
 +-------------+--------+--------------------------+
-| num_irqs    | 28     | 4                        |
+| num_irqs    | 30     | 4                        |
 +-------------+--------+--------------------------+
 
 * argz is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -540,25 +555,28 @@ VFIO_USER_DEVICE_GET_REGION_INFO
 Message format
 ^^^^^^^^^^^^^^
 
-+--------------+------------------+
-| Name         | Value            |
-+==============+==================+
-| Device ID    | <ID>             |
-+--------------+------------------+
-| Message ID   | <ID>             |
-+--------------+------------------+
-| Command      | 5                |
-+--------------+------------------+
-| Message size | 48 + any caps    |
-+--------------+------------------+
-| Flags Reply  | bit set in reply |
-+--------------+------------------+
-| Region info  | VFIO region info |
-+--------------+------------------+
++--------------+------------------------+
+| Name         | Value                  |
++==============+========================+
+| Message ID   | <ID>                   |
++--------------+------------------------+
+| Command      | 5                      |
++--------------+------------------------+
+| Message size | 50 + any caps          |
++--------------+------------------------+
+| Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
++--------------+------------------------+
+| Region info  | VFIO region info       |
++--------------+------------------------+
 
-This message is sent by the client to the server to query for information about
-device memory regions. The VFIO region info structure is defined in
-``<sys/vfio.h>`` (``struct vfio_region_info``).
+This command message is sent by the client to the server to query for
+information about device memory regions. The VFIO region info structure is
+defined in ``<sys/vfio.h>`` (``struct vfio_region_info``). Since the client
+does not know the size of the capabilities, the size of the reply it should
+expect is 50 plus any capabilities whose size is indicated in the size field of
+the reply header.
 
 VFIO region info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -566,9 +584,9 @@ VFIO region info format
 +------------+--------+------------------------------+
 | Name       | Offset | Size                         |
 +============+========+==============================+
-| argsz      | 16     | 4                            |
+| argsz      | 18     | 4                            |
 +------------+--------+------------------------------+
-| flags      | 20     | 4                            |
+| flags      | 22     | 4                            |
 +------------+--------+------------------------------+
 |            | +-----+-----------------------------+ |
 |            | | Bit | Definition                  | |
@@ -582,13 +600,13 @@ VFIO region info format
 |            | | 3   | VFIO_REGION_INFO_FLAG_CAPS  | |
 |            | +-----+-----------------------------+ |
 +------------+--------+------------------------------+
-| index      | 24     | 4                            |
+| index      | 26     | 4                            |
 +------------+--------+------------------------------+
-| cap_offset | 28     | 4                            |
+| cap_offset | 30     | 4                            |
 +------------+--------+------------------------------+
-| size       | 32     | 8                            |
+| size       | 34     | 8                            |
 +------------+--------+------------------------------+
-| offset     | 40     | 8                            |
+| offset     | 42     | 8                            |
 +------------+--------+------------------------------+
 
 * argz is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -694,15 +712,15 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | <ID>                   |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 6                      |
 +--------------+------------------------+
-| Message size | 32                     |
+| Message size | 34                     |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | IRQ info     | VFIO IRQ info          |
 +--------------+------------------------+
@@ -717,9 +735,9 @@ VFIO IRQ info format
 +-------+--------+---------------------------+
 | Name  | Offset | Size                      |
 +=======+========+===========================+
-| argsz | 16     | 4                         |
+| argsz | 18     | 4                         |
 +-------+--------+---------------------------+
-| flags | 20     | 4                         |
+| flags | 22     | 4                         |
 +-------+--------+---------------------------+
 |       | +-----+--------------------------+ |
 |       | | Bit | Definition               | |
@@ -733,9 +751,9 @@ VFIO IRQ info format
 |       | | 3   | VFIO_IRQ_INFO_NORESIZE   | |
 |       | +-----+--------------------------+ |
 +-------+--------+---------------------------+
-| index | 24     | 4                         |
+| index | 26     | 4                         |
 +-------+--------+---------------------------+
-| count | 28     | 4                         |
+| count | 30     | 4                         |
 +-------+--------+---------------------------+
 
 * argz is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -765,15 +783,16 @@ Message format
 
 +--------------+------------------------+
 | Name         | Value                  |
-| Device ID    | <ID>                   |
-+--------------+------------------------+
++==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 7                      |
 +--------------+------------------------+
-| Message size | 36 + any data          |
+| Message size | 38 + any data          |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | IRQ set      | VFIO IRQ set           |
 +--------------+------------------------+
@@ -788,9 +807,9 @@ VFIO IRQ info format
 +-------+--------+------------------------------+
 | Name  | Offset | Size                         |
 +=======+========+==============================+
-| argsz | 6      | 4                            |
+| argsz | 18     | 4                            |
 +-------+--------+------------------------------+
-| flags | 20     | 4                            |
+| flags | 22     | 4                            |
 +-------+--------+------------------------------+
 |       | +-----+-----------------------------+ |
 |       | | Bit | Definition                  | |
@@ -808,13 +827,13 @@ VFIO IRQ info format
 |       | | 5   | VFIO_IRQ_SET_ACTION_TRIGGER | |
 |       | +-----+-----------------------------+ |
 +-------+--------+------------------------------+
-| index | 24     | 4                            |
+| index | 26     | 4                            |
 +-------+--------+------------------------------+
-| start | 28     | 4                            |
+| start | 30     | 4                            |
 +-------+--------+------------------------------+
-| count | 32     | 4                            |
+| count | 34     | 4                            |
 +-------+--------+------------------------------+
-| data  | 36     | variable                     |
+| data  | 38     | variable                     |
 +-------+--------+------------------------------+
 
 * argz is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -876,13 +895,13 @@ REGION Read/Write Data
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 16     | 8        |
+| Offset | 18     | 8        |
 +--------+--------+----------+
-| Region | 24     | 4        |
+| Region | 26     | 4        |
 +--------+--------+----------+
-| Count  | 28     | 4        |
+| Count  | 30     | 4        |
 +--------+--------+----------+
-| Data   | 32     | variable |
+| Data   | 34     | variable |
 +--------+--------+----------+
 
 * Offset into the region being accessed.
@@ -900,11 +919,11 @@ DMA Read/Write Data
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 16     | 8        |
+| Address | 18     | 8        |
 +---------+--------+----------+
-| Count   | 24     | 4        |
+| Count   | 26     | 4        |
 +---------+--------+----------+
-| Data    | 28     | variable |
+| Data    | 30     | variable |
 +---------+--------+----------+
 
 * Address is the area of guest memory being accessed. This address must have
@@ -923,15 +942,15 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | <ID>                   |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 8                      |
 +--------------+------------------------+
-| Message size | 32 + data size         |
+| Message size | 34 + data size         |
 +--------------+------------------------+
-| Flags Reply  | bit set in reply       |
+| Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | Read info    | REGION read/write data |
 +--------------+------------------------+
@@ -950,17 +969,17 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | <ID>                   |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 9                      |
 +--------------+------------------------+
-| Message size | 32 + data size         |
+| Message size | 34 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
-| Write info   | REGION read write data |
+| Error        | 0/errno                |
++--------------+------------------------+
+| Write info   | REGION read/write data |
 +--------------+------------------------+
 
 This command message is sent from the client to the server to write to server
@@ -974,26 +993,26 @@ VFIO_USER_DMA_READ
 Message format
 ^^^^^^^^^^^^^^
 
-+--------------+---------------------+
-| Name         | Value               |
-+==============+=====================+
-| Device ID    | <ID>                |
-+--------------+---------------------+
-| Message ID   | <ID>                |
-+--------------+---------------------+
-| Command      | 10                  |
-+--------------+---------------------+
-| Message size | 28 + data size      |
-+--------------+---------------------+
-| Flags Reply  | bit set in reply    |
-+--------------+---------------------+
-| DMA info     | DMA read/write data |
-+--------------+---------------------+
++--------------+------------------------+
+| Name         | Value                  |
++==============+========================+
+| Message ID   | <ID>                   |
++--------------+------------------------+
+| Command      | 10                     |
++--------------+------------------------+
+| Message size | 30 + data size         |
++--------------+------------------------+
+| Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
++--------------+------------------------+
+| DMA info     | DMA read/write data    |
++--------------+------------------------+
 
-This request is sent from the server to the client to read from guest memory.
-In the request messages, there will be no data, and the count field will be the
-amount of data to be read. The reply will include the data read, and its count
-field will be the amount of data read.
+This command message is sent from the server to the client to read from client
+memory.  In the command message, there is no data, and the count must will be
+the amount of data to be read. The reply message must include the data read,
+and its count field must be the amount of data read.
 
 VFIO_USER_DMA_WRITE
 -------------------
@@ -1004,15 +1023,15 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | <ID>                   |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 11                     |
 +--------------+------------------------+
-| Message size | 28 + data size         |
+| Message size | 30 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 | DMA info     | DMA read/write data    |
 +--------------+------------------------+
@@ -1031,15 +1050,15 @@ Message format
 +----------------+------------------------+
 | Name           | Value                  |
 +================+========================+
-| Device ID      | <ID>                   |
-+----------------+------------------------+
 | Message ID     | <ID>                   |
 +----------------+------------------------+
 | Command        | 12                     |
 +----------------+------------------------+
-| Message size   | 24                     |
+| Message size   | 26                     |
 +----------------+------------------------+
 | Flags          | Reply bit set in reply |
++----------------+------------------------+
+| Error          | 0/errno                |
 +----------------+------------------------+
 | Interrupt info | <interrupt>            |
 +----------------+------------------------+
@@ -1053,9 +1072,9 @@ Interrupt info format
 +----------+--------+------+
 | Name     | Offset | Size |
 +==========+========+======+
-| Index    | 16     | 4    |
+| Index    | 18     | 4    |
 +----------+--------+------+
-| Subindex | 20     | 4    |
+| Sub-index | 22     | 4   |
 +----------+--------+------+
 
 * Index is the interrupt index; it is the same value used in VFIO_USER_SET_IRQS.
@@ -1071,15 +1090,15 @@ Message format
 +--------------+------------------------+
 | Name         | Value                  |
 +==============+========================+
-| Device ID    | <ID>                   |
-+--------------+------------------------+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
 | Command      | 13                     |
 +--------------+------------------------+
-| Message size | 16                     |
+| Message size | 18                     |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
 +--------------+------------------------+
 
 This command message is sent from the client to the server to reset the device.
