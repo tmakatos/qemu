@@ -176,18 +176,11 @@ configured into the server.
 
 Protocol Specification
 ======================
-To distinguish from the base VFIO symbols, all vfio-user symbols are
-prefixed with vfio_user or VFIO_USER. In revision 0.1, all data is in the
-little-endian format, although this may be relaxed in future revision in cases
-where the client and server are both big-endian. The messages are formatted
-for seamless reuse of the native VFIO structs. A server can serve:
-
-1) multiple clients, and/or
-2) multiple virtual devices, belonging to one or more clients.
-
-Therefore each message requires a header that uniquely identifies the virtual
-device. It is a server-side implementation detail whether a single server
-handles multiple virtual devices from the same or multiple guests.
+To distinguish from the base VFIO symbols, all vfio-user symbols are prefixed
+with vfio_user or VFIO_USER. In revision 0.1, all data is in the little-endian
+format, although this may be relaxed in future revision in cases where the
+client and server are both big-endian. The messages are formatted for seamless
+reuse of the native VFIO structs.
 
 Socket
 ------
@@ -223,8 +216,8 @@ Server Disconnection
 A server disconnecting from the client may indicate that:
 
 1) A virtual device has been restarted, either intentionally (e.g. because of a
-   device update) or unintentionally (e.g. because of a crash). In any case, the
-   virtual device will come back so the client should not do anything (e.g.
+   device update) or unintentionally (e.g. because of a crash). In any case,
+   the virtual device will come back so the client should not do anything (e.g.
    simply reconnect and retry failed operations).
 2) A virtual device has been shut down with no intention to be restarted.
 
