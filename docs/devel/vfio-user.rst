@@ -90,7 +90,7 @@ Connection Initiation
 After the client connects to the server, the initial server message is
 VFIO_USER_VERSION to propose a protocol version and set of capabilities to
 apply to the session. The client replies with a compatible version and set of
-capabilities it will support, or closes the connection if it cannot support the
+capabilities it supports, or closes the connection if it cannot support the
 advertised version.
 
 DMA Memory Configuration
@@ -263,10 +263,10 @@ Client Disconnection
 The client disconnecting from the server primarily means that the client
 has exited. Currently, this means that the guest is shut down so the device is
 no longer needed therefore the server can automatically exit. However, there
-can be cases where a client disconnect should not result in a server exit:
+can be cases where a client disconnection should not result in a server exit:
 
 1) A single server serving multiple clients.
-2) A multi-process QEMU upgrading itself step by step, which isn't yet
+2) A multi-process QEMU upgrading itself step by step, which is not yet
    implemented.
 
 Therefore in order for the protocol to be forward compatible the server should
