@@ -1175,9 +1175,10 @@ version.
 Live Migration
 --------------
 Currently live migration is not supported for devices passed through via VFIO,
-therefore it is not supported for vfio-user, either. This is being
-actively worked on in the "Add migration support for VFIO devices" (v25) patch
-series.
+therefore it is not supported for vfio-user, either. This is being actively
+worked on in the `Add migration support for VFIO devices (v25) 
+<https://lists.gnu.org/archive/html/qemu-devel/2020-06/msg06463.html>`_
+patch series.
 
 VFIO groups and containers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
