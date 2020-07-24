@@ -464,18 +464,17 @@ Message Format
 | Table        | array of table entries |
 +--------------+------------------------+
 
-This message is sent by the client to the server to inform it of the guest
-memory regions the device can access. It must be sent before the device can
-perform any DMA to the guest. It is normally sent directly after the version
-handshake is completed, but may also occur when memory is added or subtracted
-in the guest.
-
-The table is an array of the following structure. This structure is 32 bytes
-in size, so the message size will be 16 + (# of table entries * 32). If a
-region being added can be directly mapped by the server, an array of file
-descriptors will be sent as part of the message meta-data. Each region entry
-will have a corresponding file descriptor. On AF_UNIX sockets, the file
-descriptors will be passed as SCM_RIGHTS type ancillary data.
+This command message is sent by the client to the server to inform it of the
+memory regions the server can access. It must be sent before the server can
+perform any DMA to the client. It is normally sent directly after the version
+handshake is completed, but may also occur when memory is added to or
+subtracted from the client, or if the client uses a vIOMMU. If the client does
+not expect the server to perform DMA then it does not need to send to the
+server VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP commands. If the server does
+not need to perform DMA the then it can ignore such commands but it must still
+reply to them. The table is an array of the following structure.  This
+structure is 32 bytes in size, so the message size is:
+18 + (# of table entries * 32).
 
 Table entry format
 ^^^^^^^^^^^^^^^^^^
@@ -500,16 +499,34 @@ Table entry format
 |             | +-----+------------+ |
 +-------------+--------+-------------+
 
-* Address is the base DMA address of the region.
-* Size is the size of the region.
-* Offset is the file offset of the region with respect to the associated file
+* *Address* is the base DMA address of the region.
+* *Size* is the size of the region.
+* *Offset* is the file offset of the region with respect to the associated file
   descriptor.
-* Protections are the region's protection attributes as encoded in
+* *Protections* are the region's protection attributes as encoded in
   ``<sys/mman.h>``.
-* Flags contain the following region attributes:
+* *Flags* contain the following region attributes:
 
-  * Mappable indicate the region can be mapped via the mmap() system call using
-    the file descriptor provided in the message meta-data.
+  * *Mappable* indicates that the region can be mapped via the mmap() system call
+    using the file descriptor provided in the message meta-data.
+
+VFIO_USER_DMA_MAP
+"""""""""""""""""
+If a DMA region being added can be directly mapped by the server, an array of
+file descriptors must be sent as part of the message meta-data. Each region
+entry must have a corresponding file descriptor. On AF_UNIX sockets, the file
+descriptors must be passed as SCM_RIGHTS type ancillary data. Otherwise, if a
+DMA region cannot be directly mapped by the server, it can be accessed by the
+server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained in
+`Read and Write Operations`_. A command to map over an existing region must be
+failed by the server with ``EEXIST`` set in error field in the reply.
+
+VFIO_USER_DMA_UNMAP
+"""""""""""""""""""
+Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
+then the server must release all references to that DMA region before replying,
+which includes potentially in flight DMA transactions. Removing a portion of a
+DMA region is possible. 
 
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
@@ -902,6 +919,8 @@ VFIO IRQ info format
 Not all interrupt types support every combination of data and action flags.
 The client must know the capabilities of the device and IRQ index before it
 sends a VFIO_USER_DEVICE_SET_IRQ message.
+
+.. _Read and Write Operations:
 
 Read and Write Operations
 -------------------------
