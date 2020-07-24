@@ -143,11 +143,12 @@ region can be mapped by the client, a VFIO_REGION_INFO_CAP_SPARSE_MMAP
 capability is included in the region info reply. This capability describes
 which portions can be mapped by the client.
 
-For example, in a virtual NVMe controller, sparse regions can be used so that
-accesses to the NVMe registers (found in the beginning of BAR0) are trapped (an
-infrequent an event), while allowing direct access to the doorbells (an
-extremely frequent event as every I/O submission requires a write to BAR0),
-found right after the NVMe registers in BAR0.
+.. Note::
+   For example, in a virtual NVMe controller, sparse regions can be used so
+   that accesses to the NVMe registers (found in the beginning of BAR0) are
+   trapped (an infrequent event), while allowing direct access to the doorbells
+   (an extremely frequent event as every I/O submission requires a write to
+   BAR0), found right after the NVMe registers in BAR0.
 
 Interrupts
 ^^^^^^^^^^
