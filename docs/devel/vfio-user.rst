@@ -326,6 +326,9 @@ message command is sent from the client or the server.
 | VFIO_USER_DEVICE_RESET           | 13      | client -> server  |
 +----------------------------------+---------+-------------------+
 
+.. Note:: Some VFIO defines cannot be reused since their values are
+   architecture-specific (e.g. VFIO_IOMMU_MAP_DMA).
+
 Header
 ------
 All messages, both command messages and reply messages, are preceded by a 16
