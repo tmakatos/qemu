@@ -1156,7 +1156,7 @@ Appendices
 Unused VFIO ioctl() commands
 ----------------------------
 
-The following commands must be handled by the client and not sent to the server:
+The following VFIO commands do not have an equivalent vfio-user command:
 
 * VFIO_GET_API_VERSION
 * VFIO_CHECK_EXTENSION
@@ -1168,8 +1168,9 @@ The following commands must be handled by the client and not sent to the server:
 * VFIO_IOMMU_GET_INFO
 
 However, once support for live migration for VFIO devices is finalized some
-of the above commands might have to be handled by the client. This will be
-addressed in a future protocol version.
+of the above commands may have to be handled by the client in their
+corresponding vfio-user form. This will be addressed in a future protocol
+version.
 
 Live Migration
 --------------
