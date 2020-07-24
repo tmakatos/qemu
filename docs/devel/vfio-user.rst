@@ -100,8 +100,8 @@ the server of the valid DMA ranges that the server can access on behalf
 of a device. DMA memory may be accessed by the server via VFIO_USER_DMA_READ
 and VFIO_USER_DMA_WRITE messages over the socket.
 
-An optimization for server access to guest memory is for the client to provide
-file descriptors the server can mmap() to directly access guest memory. Note
+An optimization for server access to client memory is for the client to provide
+file descriptors the server can mmap() to directly access client memory. Note
 that mmap() privileges cannot be revoked by the client, therefore file
 descriptors should only be exported in environments where the client trusts the
 server not to corrupt guest memory.
@@ -204,7 +204,7 @@ Socket types than span guests or hosts will require a proper authentication
 mechanism. Defining that mechanism is deferred to a future version of the
 protocol.
 
-Request Concurrency
+Command Concurrency
 -------------------
 There can be multiple outstanding requests per virtual device, e.g. a
 frame buffer where the guest does multiple stores to the virtual device. The
@@ -231,8 +231,8 @@ It is impossible for the client to know whether or not a failure is
 intermittent or innocuous and should be retried, therefore the client should
 attempt to reconnect to the socket. Since an intentional server restart (e.g.
 due to an upgrade) might take some time, a reasonable timeout should be used.
-In cases where the disconnection is expected (e.g. the guest shutting down), no
-new requests will be sent anyway so this situation doesn't pose a problem. The
+In cases where the disconnection is expected (e.g. the client exits), no new
+commands will be sent anyway so this situation does not pose a problem. The
 control stack will clean up accordingly.
 
 Parametrizing this behaviour by having the virtual device advertise a
@@ -240,8 +240,8 @@ reasonable reconnect is deferred to a future version of the protocol.
 
 Client Disconnection
 ^^^^^^^^^^^^^^^^^^^^
-The client disconnecting from the server primarily means that the QEMU process
-has exited. Currently this means that the guest is shut down so the device is
+The client disconnecting from the server primarily means that the client
+has exited. Currently, this means that the guest is shut down so the device is
 no longer needed therefore the server can automatically exit. However, there
 can be cases where a client disconnect should not result in a server exit:
 
@@ -251,7 +251,7 @@ can be cases where a client disconnect should not result in a server exit:
 
 Therefore in order for the protocol to be forward compatible the server should
 take no action when the client disconnects. If anything happens to the client
-process the control stack will know about it and can clean up resources
+the control stack will know about it and can clean up resources
 accordingly.
 
 Request Retry and Response Timeout
@@ -269,7 +269,7 @@ protocol.
 Commands
 --------
 The following table lists the VFIO message command IDs, and whether the
-message request is sent from the client or the server.
+message command is sent from the client or the server.
 
 +----------------------------------+---------+-------------------+
 | Name                             | Command | Request Direction |
@@ -498,10 +498,10 @@ Message format
 | Device info  | VFIO device info           |
 +--------------+----------------------------+
 
-This message is sent by the client to the server to query for basic information
-about the device. Only the message header is needed in the request message.
-The VFIO device info structure is defined in ``<sys/vfio.h>`` (``struct
-vfio_device_info``).
+This command message is sent by the client to the server to query for basic
+information about the device. Only the message header is needed in the command
+message.  The VFIO device info structure is defined in ``<sys/vfio.h>``
+(``struct vfio_device_info``).
 
 VFIO device info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -713,9 +713,9 @@ Message format
 | IRQ info     | VFIO IRQ info          |
 +--------------+------------------------+
 
-This message is sent by the client to the server to query for information about
-device interrupt types. The VFIO IRQ info structure is defined in
-``<sys/vfio.h>`` (``struct vfio_irq_info``).
+This command message is sent by the client to the server to query for
+information about device interrupt types. The VFIO IRQ info structure is
+defined in ``<sys/vfio.h>`` (``struct vfio_irq_info``).
 
 VFIO IRQ info format
 ^^^^^^^^^^^^^^^^^^^^
@@ -760,7 +760,7 @@ VFIO IRQ info format
     the entire type.
 
 * index is the index of IRQ type being queried, it is the only field that is
-  required to be set in the request message.
+  required to be set in the command message.
 * count describes the number of interrupts of the queried type.
 
 VFIO_USER_DEVICE_SET_IRQS
@@ -784,9 +784,9 @@ Message format
 | IRQ set      | VFIO IRQ set           |
 +--------------+------------------------+
 
-This message is sent by the client to the server to set actions for device
-interrupt types. The VFIO IRQ set structure is defined in ``<sys/vfio.h>``
-(``struct vfio_irq_set``).
+This command message is sent by the client to the server to set actions for
+device interrupt types. The VFIO IRQ set structure is defined in
+``<sys/vfio.h>`` (``struct vfio_irq_set``).
 
 VFIO IRQ info format
 ^^^^^^^^^^^^^^^^^^^^
@@ -872,9 +872,9 @@ access of memory mapped with an mmap() call. In these cases, the client and
 server use messages sent over the socket. It is expected that these operations
 will have lower performance than direct access.
 
-The client can access device memory with VFIO_USER_REGION_READ and
-VFIO_USER_REGION_WRITE requests. These share a common data structure that
-appears after the 16 byte message header.
+The client can access server memory with VFIO_USER_REGION_READ and
+VFIO_USER_REGION_WRITE commands. These share a common data structure that
+appears after the message header.
 
 REGION Read/Write Data
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -896,7 +896,7 @@ REGION Read/Write Data
 * Count is the size of the data to be transferred.
 * Data is the data to be read or written.
 
-The server can access guest memory with VFIO_USER_DMA_READ and
+The server can access client memory with VFIO_USER_DMA_READ and
 VFIO_USER_DMA_WRITE messages. These also share a common data structure that
 appears after the 16 byte message header.
 
@@ -942,10 +942,10 @@ Message format
 | Read info    | REGION read/write data |
 +--------------+------------------------+
 
-This request is sent from the client to the server to read from device memory.
-In the request messages, there will be no data, and the count field will be the
-amount of data to be read. The reply will include the data read, and its count
-field will be the amount of data read.
+This command message is sent from the client to the server to read from server
+memory.  In the command messages, there is no data, and the count is the amount
+of data to be read. The reply message must include the data read, and its count
+field is the amount of data read.
 
 VFIO_USER_REGION_WRITE
 ----------------------
@@ -969,10 +969,10 @@ Message format
 | Write info   | REGION read write data |
 +--------------+------------------------+
 
-This request is sent from the client to the server to write to device memory.
-The request message will contain the data to be written, and its count field
-will contain the amount of write data. The count field in the reply will be
-zero.
+This command message is sent from the client to the server to write to server
+memory.  The command message must contain the data to be written, and its count
+field must contain the amount of write data. The count field in the reply
+message must be zero.
 
 VFIO_USER_DMA_READ
 ------------------
@@ -1023,10 +1023,10 @@ Message format
 | DMA info     | DMA read/write data    |
 +--------------+------------------------+
 
-This request is sent from the server to the client to write to guest memory.
-The request message will contain the data to be written, and its count field
-will contain the amount of write data. The count field in the reply will be
-zero.
+This command message is sent from the server to the client to write to server
+memory.  The command message must contain the data to be written, and its count
+field must contain the amount of write data. The count field in the reply
+message must be zero.
 
 VFIO_USER_VM_INTERRUPT
 ----------------------
@@ -1050,8 +1050,8 @@ Message format
 | Interrupt info | <interrupt>            |
 +----------------+------------------------+
 
-This request is sent from the server to the client to signal the device has
-raised an interrupt.
+This command message is sent from the server to the client to signal the device
+has raised an interrupt.
 
 Interrupt info format
 ^^^^^^^^^^^^^^^^^^^^^
@@ -1088,7 +1088,7 @@ Message format
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
 
-This request is sent from the client to the server to reset the device.
+This command message is sent from the client to the server to reset the device.
 
 Appendices
 ==========
