@@ -335,18 +335,16 @@ All messages, both command messages and reply messages, are preceded by a
 header that contains basic information about the message. The header is
 followed by message-specific data described in the sections below.
 
-.. Shall we make command 2 bytes instead of 4?
-
 +----------------+--------+-------------+
 | Name           | Offset | Size        |
 +================+========+=============+
 | Message ID     | 0      | 2           |
 +----------------+--------+-------------+
-| Command        | 2      | 4           |
+| Command        | 2      | 2           |
 +----------------+--------+-------------+
-| Message size   | 6      | 4           |
+| Message size   | 4      | 4           |
 +----------------+--------+-------------+
-| Flags          | 10     | 4           |
+| Flags          | 8      | 4           |
 +----------------+--------+-------------+
 |                | +-----+------------+ |
 |                | | Bit | Definition | |
@@ -358,9 +356,9 @@ followed by message-specific data described in the sections below.
 |                | | 2   | Error      | |
 |                | +-----+------------+ |
 +----------------+--------+-------------+
-| Error          | 14     | 4           |
+| Error          | 12     | 4           |
 +----------------+--------+-------------+
-| <message data> | 18     | variable    |
+| <message data> | 16     | variable    |
 +----------------+--------+-------------+
 
 * *Message ID* identifies the message, and is used echoed in the reply message.
@@ -393,7 +391,7 @@ Message format
 +--------------+------------------------+
 | Command      | 1                      |
 +--------------+------------------------+
-| Message size | 18 + version length    |
+| Message size | 16 + version length    |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -455,7 +453,7 @@ Message Format
 +--------------+------------------------+
 | Command      | MAP=2, UNMAP=3         |
 +--------------+------------------------+
-| Message size | 18 + table size        |
+| Message size | 16 + table size        |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -474,7 +472,7 @@ server VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP commands. If the server does
 not need to perform DMA the then it can ignore such commands but it must still
 reply to them. The table is an array of the following structure.  This
 structure is 32 bytes in size, so the message size is:
-18 + (# of table entries * 32).
+16 + (# of table entries * 32).
 
 Table entry format
 ^^^^^^^^^^^^^^^^^^
@@ -541,7 +539,7 @@ Message format
 +--------------+----------------------------+
 | Command      | 4                          |
 +--------------+----------------------------+
-| Message size | 18 in command, 34 in reply |
+| Message size | 16 in command, 32 in reply |
 +--------------+----------------------------+
 | Flags        | Reply bit set in reply     |
 +--------------+----------------------------+
@@ -561,9 +559,9 @@ VFIO device info format
 +-------------+--------+--------------------------+
 | Name        | Offset | Size                     |
 +=============+========+==========================+
-| argsz       | 18     | 4                        |
+| argsz       | 16     | 4                        |
 +-------------+--------+--------------------------+
-| flags       | 22     | 4                        |
+| flags       | 20     | 4                        |
 +-------------+--------+--------------------------+
 |             | +-----+-------------------------+ |
 |             | | Bit | Definition              | |
@@ -573,9 +571,9 @@ VFIO device info format
 |             | | 1   | VFIO_DEVICE_FLAGS_PCI   | |
 |             | +-----+-------------------------+ |
 +-------------+--------+--------------------------+
-| num_regions | 26     | 4                        |
+| num_regions | 24     | 4                        |
 +-------------+--------+--------------------------+
-| num_irqs    | 30     | 4                        |
+| num_irqs    | 28     | 4                        |
 +-------------+--------+--------------------------+
 
 * *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -605,7 +603,7 @@ Message format
 +--------------+------------------------+
 | Command      | 5                      |
 +--------------+------------------------+
-| Message size | 50 + any caps          |
+| Message size | 48 + any caps          |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -618,7 +616,7 @@ This command message is sent by the client to the server to query for
 information about device memory regions. The VFIO region info structure is
 defined in ``<sys/vfio.h>`` (``struct vfio_region_info``). Since the client
 does not know the size of the capabilities, the size of the reply it should
-expect is 50 plus any capabilities whose size is indicated in the size field of
+expect is 48 plus any capabilities whose size is indicated in the size field of
 the reply header.
 
 VFIO region info format
@@ -627,9 +625,9 @@ VFIO region info format
 +------------+--------+------------------------------+
 | Name       | Offset | Size                         |
 +============+========+==============================+
-| argsz      | 18     | 4                            |
+| argsz      | 16     | 4                            |
 +------------+--------+------------------------------+
-| flags      | 22     | 4                            |
+| flags      | 20     | 4                            |
 +------------+--------+------------------------------+
 |            | +-----+-----------------------------+ |
 |            | | Bit | Definition                  | |
@@ -643,13 +641,13 @@ VFIO region info format
 |            | | 3   | VFIO_REGION_INFO_FLAG_CAPS  | |
 |            | +-----+-----------------------------+ |
 +------------+--------+------------------------------+
-| index      | 26     | 4                            |
+| index      | 24     | 4                            |
 +------------+--------+------------------------------+
-| cap_offset | 30     | 4                            |
+| cap_offset | 28     | 4                            |
 +------------+--------+------------------------------+
-| size       | 34     | 8                            |
+| size       | 32     | 8                            |
 +------------+--------+------------------------------+
-| offset     | 42     | 8                            |
+| offset     | 40     | 8                            |
 +------------+--------+------------------------------+
 
 * *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -760,7 +758,7 @@ Message format
 +--------------+------------------------+
 | Command      | 6                      |
 +--------------+------------------------+
-| Message size | 34                     |
+| Message size | 32                     |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -779,9 +777,9 @@ VFIO IRQ info format
 +-------+--------+---------------------------+
 | Name  | Offset | Size                      |
 +=======+========+===========================+
-| argsz | 18     | 4                         |
+| argsz | 16     | 4                         |
 +-------+--------+---------------------------+
-| flags | 22     | 4                         |
+| flags | 20     | 4                         |
 +-------+--------+---------------------------+
 |       | +-----+--------------------------+ |
 |       | | Bit | Definition               | |
@@ -795,9 +793,9 @@ VFIO IRQ info format
 |       | | 3   | VFIO_IRQ_INFO_NORESIZE   | |
 |       | +-----+--------------------------+ |
 +-------+--------+---------------------------+
-| index | 26     | 4                         |
+| index | 24     | 4                         |
 +-------+--------+---------------------------+
-| count | 30     | 4                         |
+| count | 28     | 4                         |
 +-------+--------+---------------------------+
 
 * *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -832,7 +830,7 @@ Message format
 +--------------+------------------------+
 | Command      | 7                      |
 +--------------+------------------------+
-| Message size | 38 + any data          |
+| Message size | 36 + any data          |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -851,9 +849,9 @@ VFIO IRQ info format
 +-------+--------+------------------------------+
 | Name  | Offset | Size                         |
 +=======+========+==============================+
-| argsz | 18     | 4                            |
+| argsz | 16     | 4                            |
 +-------+--------+------------------------------+
-| flags | 22     | 4                            |
+| flags | 20     | 4                            |
 +-------+--------+------------------------------+
 |       | +-----+-----------------------------+ |
 |       | | Bit | Definition                  | |
@@ -871,13 +869,13 @@ VFIO IRQ info format
 |       | | 5   | VFIO_IRQ_SET_ACTION_TRIGGER | |
 |       | +-----+-----------------------------+ |
 +-------+--------+------------------------------+
-| index | 26     | 4                            |
+| index | 24     | 4                            |
 +-------+--------+------------------------------+
-| start | 30     | 4                            |
+| start | 28     | 4                            |
 +-------+--------+------------------------------+
-| count | 34     | 4                            |
+| count | 32     | 4                            |
 +-------+--------+------------------------------+
-| data  | 38     | variable                     |
+| data  | 36     | variable                     |
 +-------+--------+------------------------------+
 
 * *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
@@ -941,13 +939,13 @@ REGION Read/Write Data
 +--------+--------+----------+
 | Name   | Offset | Size     |
 +========+========+==========+
-| Offset | 18     | 8        |
+| Offset | 16     | 8        |
 +--------+--------+----------+
-| Region | 26     | 4        |
+| Region | 24     | 4        |
 +--------+--------+----------+
-| Count  | 30     | 4        |
+| Count  | 28     | 4        |
 +--------+--------+----------+
-| Data   | 34     | variable |
+| Data   | 32     | variable |
 +--------+--------+----------+
 
 * *Offset* into the region being accessed.
@@ -965,11 +963,11 @@ DMA Read/Write Data
 +---------+--------+----------+
 | Name    | Offset | Size     |
 +=========+========+==========+
-| Address | 18     | 8        |
+| Address | 16     | 8        |
 +---------+--------+----------+
-| Count   | 26     | 4        |
+| Count   | 24     | 4        |
 +---------+--------+----------+
-| Data    | 30     | variable |
+| Data    | 28     | variable |
 +---------+--------+----------+
 
 * *Address* is the area of client memory being accessed. This address must have
@@ -992,7 +990,7 @@ Message format
 +--------------+------------------------+
 | Command      | 8                      |
 +--------------+------------------------+
-| Message size | 34 + data size         |
+| Message size | 32 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -1019,7 +1017,7 @@ Message format
 +--------------+------------------------+
 | Command      | 9                      |
 +--------------+------------------------+
-| Message size | 34 + data size         |
+| Message size | 32 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -1046,7 +1044,7 @@ Message format
 +--------------+------------------------+
 | Command      | 10                     |
 +--------------+------------------------+
-| Message size | 30 + data size         |
+| Message size | 28 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -1073,7 +1071,7 @@ Message format
 +--------------+------------------------+
 | Command      | 11                     |
 +--------------+------------------------+
-| Message size | 30 + data size         |
+| Message size | 28 + data size         |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
@@ -1100,7 +1098,7 @@ Message format
 +----------------+------------------------+
 | Command        | 12                     |
 +----------------+------------------------+
-| Message size   | 26                     |
+| Message size   | 24                     |
 +----------------+------------------------+
 | Flags          | Reply bit set in reply |
 +----------------+------------------------+
@@ -1115,13 +1113,13 @@ has raised an interrupt.
 Interrupt info format
 ^^^^^^^^^^^^^^^^^^^^^
 
-+----------+--------+------+
-| Name     | Offset | Size |
-+==========+========+======+
-| Index    | 18     | 4    |
-+----------+--------+------+
-| Sub-index | 22     | 4   |
-+----------+--------+------+
++-----------+--------+------+
+| Name      | Offset | Size |
++===========+========+======+
+| Index     | 16     | 4    |
++-----------+--------+------+
+| Sub-index | 20     | 4    |
++-----------+--------+------+
 
 * *Index* is the interrupt index; it is the same value used in
   VFIO_USER_SET_IRQS.
@@ -1141,7 +1139,7 @@ Message format
 +--------------+------------------------+
 | Command      | 13                     |
 +--------------+------------------------+
-| Message size | 18                     |
+| Message size | 16                     |
 +--------------+------------------------+
 | Flags        | Reply bit set in reply |
 +--------------+------------------------+
