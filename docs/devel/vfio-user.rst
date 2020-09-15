@@ -567,8 +567,7 @@ VFIO device info format
 | num_irqs    | 28     | 4                        |
 +-------------+--------+--------------------------+
 
-* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
-  implementation.
+* *argsz* is the size of the VFIO device info structure.
 * *flags* contains the following device attributes.
 
   * VFIO_DEVICE_FLAGS_RESET indicates that the device supports the
@@ -641,8 +640,8 @@ VFIO region info format
 | offset     | 40     | 8                            |
 +------------+--------+------------------------------+
 
-* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
-  implementation.
+* *argsz* is the size of the VFIO region info structure plus the
+  size of any region capabilities returned.
 * *flags* are attributes of the region:
 
   * *VFIO_REGION_INFO_FLAG_READ* allows client read access to the region.
@@ -789,8 +788,7 @@ VFIO IRQ info format
 | count | 28     | 4                         |
 +-------+--------+---------------------------+
 
-* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
-  implementation.
+* *argsz* is the size of the VFIO IRQ info structure.
 * *flags* defines IRQ attributes:
 
   * *VFIO_IRQ_INFO_EVENTFD* indicates the IRQ type can support server eventfd
@@ -869,8 +867,7 @@ VFIO IRQ info format
 | data  | 36     | variable                     |
 +-------+--------+------------------------------+
 
-* *argz* is reserved in vfio-user, it is only used in the ioctl() VFIO
-  implementation.
+* *argsz* is the size of the VFIO IRQ set structure, including any *data* field.
 * *flags* defines the action performed on the interrupt range. The DATA flags
   describe the data field sent in the message; the ACTION flags describe the
   action to be performed. The flags are mutually exclusive for both sets.
