@@ -257,6 +257,12 @@ take no action when the client disconnects. If anything happens to the client
 the control stack will know about it and can clean up resources
 accordingly.
 
+Live Migration
+^^^^^^^^^^^^^^
+A future version of the protocol will support client live migration.  This action
+will require the socket to be quiesced before it is disconnected,  This mechanism
+will be defined when live migration support is added.
+
 Request Retry and Response Timeout
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 A failed command is a command that has been successfully sent and has been
@@ -1154,14 +1160,6 @@ However, once support for live migration for VFIO devices is finalized some
 of the above commands may have to be handled by the client in their
 corresponding vfio-user form. This will be addressed in a future protocol
 version.
-
-Live Migration
---------------
-Currently live migration is not supported for devices passed through via VFIO,
-therefore it is not supported for vfio-user, either. This is being actively
-worked on in the `Add migration support for VFIO devices (v25) 
-<https://lists.gnu.org/archive/html/qemu-devel/2020-06/msg06463.html>`_
-patch series.
 
 VFIO groups and containers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
