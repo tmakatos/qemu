@@ -966,8 +966,6 @@ DMA Read/Write Data
 * *Count* is the size of the data to be transferred.
 * *Data* is the data to be read or written.
 
-Address and count can also be accessed as ``struct iovec`` from ``<sys/uio.h>``.
-
 VFIO_USER_REGION_READ
 ---------------------
 
