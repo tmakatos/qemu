@@ -902,7 +902,8 @@ VFIO IRQ set format
 * *start* is the start of the sub-index being set.
 * *count* describes the number of sub-indexes being set. As a special case, a
   count of 0 with data flags of VFIO_IRQ_SET_DATA_NONE disables all interrupts
-  of the index data is an optional field included when the
+  of the index.
+* *data* is an optional field included when the
   VFIO_IRQ_SET_DATA_BOOL flag is present. It contains an array of booleans
   that specify whether the action is to be performed on the corresponding
   index. It's used when the action is only performed on a subset of the range
