@@ -232,29 +232,14 @@ Server Disconnection
 A server disconnecting from the client may indicate that:
 
 1) A virtual device has been restarted, either intentionally (e.g. because of a
-   device update) or unintentionally (e.g. because of a crash). In any case,
-   the virtual device will come back so the client should not do anything (e.g.
-   simply reconnect and retry failed operations).
+   device update) or unintentionally (e.g. because of a crash).
 2) A virtual device has been shut down with no intention to be restarted.
 
 It is impossible for the client to know whether or not a failure is
 intermittent or innocuous and should be retried, therefore the client should
-attempt to reconnect to the socket. Since an intentional server restart (e.g.
-due to an upgrade) might take some time, a reasonable timeout should be used.
-In cases where the disconnection is expected (e.g. the client exits), no new
-commands will be sent anyway so this situation does not pose a problem. The
-control stack will clean up accordingly.
-
-Parameterizing this behaviour by having the server advertise a reasonable
-reconnect is deferred to a future version of the protocol.
-
-Recovering state is implementation-specific. The protocol provides all the
-building blocks and does not enforce a particular mechanism:
-
-* Recovering state must be initiated by the client since it is the master in
-  the vfio-user model. Interrupts/DMA may have to be reconfigured,
-  unacknowledged requests may have to be re-submitted, etc.
-* The server may have to persistently store device state.
+reset the VFIO device when it detects the socket has been disconnected.
+Error recovery will be driven by the guest's device error handling
+behavior.
 
 Client Disconnection
 ^^^^^^^^^^^^^^^^^^^^
