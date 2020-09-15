@@ -541,7 +541,7 @@ Message format
 
 This command message is sent by the client to the server to query for basic
 information about the device. Only the message header is needed in the command
-message.  The VFIO device info structure is defined in ``<sys/vfio.h>``
+message.  The VFIO device info structure is defined in ``<linux/vfio.h>``
 (``struct vfio_device_info``).
 
 VFIO device info format
@@ -605,7 +605,7 @@ Message format
 
 This command message is sent by the client to the server to query for
 information about device memory regions. The VFIO region info structure is
-defined in ``<sys/vfio.h>`` (``struct vfio_region_info``). Since the client
+defined in ``<linux/vfio.h>`` (``struct vfio_region_info``). Since the client
 does not know the size of the capabilities, the size of the reply it should
 expect is 48 plus any capabilities whose size is indicated in the size field of
 the reply header.
@@ -659,7 +659,7 @@ VFIO region info format
 * *cap_offset* describes where additional region capabilities can be found.
   cap_offset is relative to the beginning of the VFIO region info structure.
   The data structure it points is a VFIO cap header defined in
-  ``<sys/vfio.h>``.
+  ``<linux/vfio.h>``.
 * *size* is the size of the region.
 * *offset* is the offset given to the mmap() system call for regions with the
   MMAP attribute. It is also used as the base offset when mapping a VFIO
@@ -670,7 +670,7 @@ VFIO Region capabilities
 The VFIO region information can also include a capabilities list. This list is
 similar to a PCI capability list - each entry has a common header that
 identifies a capability and where the next capability in the list can be found.
-The VFIO capability header format is defined in ``<sys/vfio.h>`` (``struct
+The VFIO capability header format is defined in ``<linux/vfio.h>`` (``struct
 vfio_info_cap_header``).
 
 VFIO cap header format
@@ -709,7 +709,7 @@ VFIO sparse mmap
 The only capability supported in this version of the protocol is for sparse
 mmap. This capability is defined when only a subrange of the region supports
 direct access by the client via mmap(). The VFIO sparse mmap area is defined in
-``<sys/vfio.h>`` (``struct vfio_region_sparse_mmap_area``).
+``<linux/vfio.h>`` (``struct vfio_region_sparse_mmap_area``).
 
 VFIO region info cap sparse mmap
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -733,7 +733,7 @@ VFIO region info cap sparse mmap
   the base offset given in the VFIO_USER_DEVICE_GET_REGION_INFO to form the
   offset argument of the subsequent mmap() call.
 
-The VFIO sparse mmap area is defined in ``<sys/vfio.h>`` (``struct
+The VFIO sparse mmap area is defined in ``<linux/vfio.h>`` (``struct
 vfio_region_info_cap_sparse_mmap``).
 
 VFIO_USER_DEVICE_GET_IRQ_INFO
@@ -760,7 +760,7 @@ Message format
 
 This command message is sent by the client to the server to query for
 information about device interrupt types. The VFIO IRQ info structure is
-defined in ``<sys/vfio.h>`` (``struct vfio_irq_info``).
+defined in ``<linux/vfio.h>`` (``struct vfio_irq_info``).
 
 VFIO IRQ info format
 ^^^^^^^^^^^^^^^^^^^^
@@ -832,7 +832,7 @@ Message format
 
 This command message is sent by the client to the server to set actions for
 device interrupt types. The VFIO IRQ set structure is defined in
-``<sys/vfio.h>`` (``struct vfio_irq_set``).
+``<linux/vfio.h>`` (``struct vfio_irq_set``).
 
 VFIO IRQ info format
 ^^^^^^^^^^^^^^^^^^^^
