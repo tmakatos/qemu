@@ -207,21 +207,19 @@ protocol.
 
 Command Concurrency
 -------------------
-There can be multiple outstanding commands per virtual device, e.g. a frame
-buffer where the guest does multiple stores to the virtual device.  Commands
-must be executed in the order they are received.  The server can execute and
-reorder non-conflicting commands in parallel, depending on the device
-semantics.
+A client may pipeline multiple commands without waiting for previous command
+replies.  The server will process commands in the order they are received.
+A consequence of this is if a client issues a command with the *No_reply* bit,
+then subseqently issues a command without *No_reply*, the older command will
+have been processed before the reply to the younger command is sent by the
+server.  The client must be aware of the device's capability to process concurrent
+commands if pipelining is used.  For example, pipelining allows multiple client
+threads to concurently access device memory; the client must ensure these acceses
+obey device semantics.
 
-.. Note::
-   For instance, a client can issue the following operations back to back
-   without waiting for the first two to complete:
-
-   1. map a DMA region 
-   2. trigger some device-specific operation that results in data being read
-      into that DMA region, and
-   3. unmap the DMA region
-
+An example is a frame buffer device, where the device may allow concurrent access
+to different areas of video memory, but may have indeterminate behavior if concurrent
+acceses are performed to command or status registers.
 
 Socket Disconnection Behavior
 -----------------------------
