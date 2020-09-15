@@ -837,8 +837,8 @@ This command message is sent by the client to the server to set actions for
 device interrupt types. The VFIO IRQ set structure is defined in
 ``<linux/vfio.h>`` (``struct vfio_irq_set``).
 
-VFIO IRQ info format
-^^^^^^^^^^^^^^^^^^^^
+VFIO IRQ set format
+^^^^^^^^^^^^^^^^^^^
 
 +-------+--------+------------------------------+
 | Name  | Offset | Size                         |
