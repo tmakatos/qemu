@@ -2,9 +2,9 @@
 vfio-user Protocol Specification
 ********************************
 
------------
-Version 0.1
------------
+------------
+Version_ 0.1
+------------
 
 .. contents:: Table of Contents
 
@@ -414,6 +414,8 @@ included:
 | capabilities | array  | Reserved. Can be omitted for v0.1, otherwise must |
 |              |        | be empty.                                         |
 +--------------+--------+---------------------------------------------------+
+
+.. _Version:
 
 Versioning and Feature Support
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
