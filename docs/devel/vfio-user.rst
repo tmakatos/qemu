@@ -338,11 +338,11 @@ followed by message-specific data described in the sections below.
 |                | +-----+------------+ |
 |                | | Bit | Definition | |
 |                | +=====+============+ |
-|                | | 0   | Reply      | |
+|                | | 0-3 | Type       | |
 |                | +-----+------------+ |
-|                | | 1   | No_reply   | |
+|                | | 4   | No_reply   | |
 |                | +-----+------------+ |
-|                | | 2   | Error      | |
+|                | | 5   | Error      | |
 |                | +-----+------------+ |
 +----------------+--------+-------------+
 | Error          | 12     | 4           |
@@ -350,22 +350,27 @@ followed by message-specific data described in the sections below.
 | <message data> | 16     | variable    |
 +----------------+--------+-------------+
 
-* *Message ID* identifies the message, and is used echoed in the reply message.
+* *Message ID* identifies the message, and is echoed in the command's reply message.
 * *Command* specifies the command to be executed, listed in Commands_.
 * *Message size* contains the size of the entire message, including the header.
 * *Flags* contains attributes of the message:
 
-  * The reply bit differentiates command messages from reply messages. A reply
-    message acknowledges a previous command with the same message ID.
-  * No_reply indicates that no reply is needed for this command. This is
-    commonly used when multiple commands are sent, and only the last needs
+  * The *Type* bits indicate the message type.
+
+    *  *Command* (value 0x0) indicates a command message.
+    *  *Reply* (value 0x1) indicates a reply message acknowledging a previous
+       command with the same message ID.
+  * *No_reply* in a command message indicates that no reply is needed for this command.
+    This is commonly used when multiple commands are sent, and only the last needs
     acknowledgement.
+  * *Error* in a reply message indicates the command being acknowledged had
+    an error. In this case, the *Error* field will be valid.
 
-* *Error* is a UNIX errno value set only in the reply message. It is reserved in
-  the command message.
+* *Error* in a reply message is a UNIX errno value. It is reserved in a command message.
 
-Each command message in Commands_ must be replied to with a reply message,
-which consists of the header with the reply bit set, plus any additional data.
+Each command message in Commands_ must be replied to with a reply message, unless the
+message sets the *No_Reply* bit.  The reply consists of the header with the *Reply*
+bit set, plus any additional data.
 
 VFIO_USER_VERSION
 -----------------
