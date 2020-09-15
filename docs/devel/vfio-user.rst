@@ -520,7 +520,7 @@ VFIO_USER_DMA_UNMAP
 Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
 then the server must release all references to that DMA region before replying,
 which includes potentially in flight DMA transactions. Removing a portion of a
-DMA region is possible. 
+DMA region is possible.
 
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
