@@ -465,7 +465,7 @@ handshake is completed, but may also occur when memory is added to or
 subtracted from the client, or if the client uses a vIOMMU. If the client does
 not expect the server to perform DMA then it does not need to send to the
 server VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP commands. If the server does
-not need to perform DMA the then it can ignore such commands but it must still
+not need to perform DMA then it can ignore such commands but it must still
 reply to them. The table is an array of the following structure.  This
 structure is 32 bytes in size, so the message size is:
 16 + (# of table entries * 32).
