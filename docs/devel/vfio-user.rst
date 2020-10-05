@@ -1352,7 +1352,7 @@ Message format
 +----------------+------------------------+
 | Command        | 12                     |
 +----------------+------------------------+
-| Message size   | 24                     |
+| Message size   | 20                     |
 +----------------+------------------------+
 | Flags          | Reply bit set in reply |
 +----------------+------------------------+
@@ -1370,14 +1370,10 @@ Interrupt info format
 +-----------+--------+------+
 | Name      | Offset | Size |
 +===========+========+======+
-| Index     | 16     | 4    |
-+-----------+--------+------+
-| Sub-index | 20     | 4    |
+| Sub-index | 16     | 4    |
 +-----------+--------+------+
 
-* *Index* is the interrupt index; it is the same value used in
-  VFIO_USER_SET_IRQS.
-* *Sub-index* is relative to the index, e.g., the vector number used in PCI
+* *Sub-index* is relative to the IRQ index, e.g., the vector number used in PCI
   MSI/X type interrupts.
 
 VFIO_USER_DEVICE_RESET
