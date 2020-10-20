@@ -1,3 +1,5 @@
+.. include:: <isonum.txt>
+
 ********************************
 vfio-user Protocol Specification
 ********************************
@@ -150,6 +152,15 @@ which portions can be mapped by the client.
    (an extremely frequent event as every I/O submission requires a write to
    BAR0), found right after the NVMe registers in BAR0.
 
+Device-Specific Regions
+"""""""""""""""""""""""
+
+A device can define regions additional to the standard ones (e.g. PCI indexes
+0-8). This is achieved by including a VFIO_REGION_INFO_CAP_TYPE capability
+in the region info reply of a device-specific region. Such regions are reflected
+in ``struct vfio_device_info.num_regions``. Thus, for PCI devices this value can
+be equal to, or higher than, VFIO_PCI_NUM_REGIONS.
+
 Interrupts
 ^^^^^^^^^^
 The client uses VFIO_USER_DEVICE_GET_IRQ_INFO messages to query the server for
@@ -256,12 +267,6 @@ Therefore in order for the protocol to be forward compatible the server should
 take no action when the client disconnects. If anything happens to the client
 the control stack will know about it and can clean up resources
 accordingly.
-
-Live Migration
-^^^^^^^^^^^^^^
-A future version of the protocol will support client live migration.  This action
-will require the socket to be quiesced before it is disconnected,  This mechanism
-will be defined when live migration support is added.
 
 Request Retry and Response Timeout
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -720,8 +725,7 @@ VFIO sparse mmap
 | sparse mmap info | VFIO region info sparse mmap     |
 +------------------+----------------------------------+
 
-The only capability supported in this version of the protocol is for sparse
-mmap. This capability is defined when only a subrange of the region supports
+This capability is defined when only a subrange of the region supports
 direct access by the client via mmap(). The VFIO sparse mmap area is defined in
 ``<linux/vfio.h>`` (``struct vfio_region_sparse_mmap_area``).
 
@@ -749,6 +753,212 @@ VFIO region info cap sparse mmap
 
 The VFIO sparse mmap area is defined in ``<linux/vfio.h>`` (``struct
 vfio_region_info_cap_sparse_mmap``).
+
+VFIO Region Type
+^^^^^^^^^^^^^^^^
+
++------------------+---------------------------+
+| Name             | Value                     |
++==================+===========================+
+| id               | VFIO_REGION_INFO_CAP_TYPE |
++------------------+---------------------------+
+| version          | 0x1                       |
++------------------+---------------------------+
+| next             | <next>                    |
++------------------+---------------------------+
+| region info type | VFIO region info type     |
++------------------+---------------------------+
+
+This capability is defined when a region is specific to the device.
+
+VFIO region info type
+^^^^^^^^^^^^^^^^^^^^^
+
+The VFIO region info type is defined in ``<linux/vfio.h>``
+(``struct vfio_region_info_cap_type``).
+
++---------+--------+------+
+| Name    | Offset | Size |
++=========+========+======+
+| type    | 0      | 4    |
++---------+--------+------+
+| subtype | 4      | 4    |
++---------+--------+------+
+
+The only device-specific region type and subtype supported by vfio-user is
+VFIO_REGION_TYPE_MIGRATION (3) and VFIO_REGION_SUBTYPE_MIGRATION (1).
+
+VFIO Device Migration Info
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The beginning of the subregion must contain
+``struct vfio_device_migration_info``, defined in ``<linux/vfio.h>``. This
+subregion is accessed like any other part of a standard vfio-user PCI region
+using VFIO_USER_REGION_READ/VFIO_USER_REGION_WRITE.
+
++---------------+--------+-----------------------------+
+| Name          | Offset | Size                        |
++===============+========+=============================+
+| device_state  | 0      | 4                           |
++---------------+--------+-----------------------------+
+|               | +-----+----------------------------+ |
+|               | | Bit | Definition                 | |
+|               | +=====+============================+ |
+|               | | 0   | VFIO_DEVICE_STATE_RUNNING  | |
+|               | +-----+----------------------------+ |
+|               | | 1   | VFIO_DEVICE_STATE_SAVING   | |
+|               | +-----+----------------------------+ |
+|               | | 2   | VFIO_DEVICE_STATE_RESUMING | |
+|               | +-----+----------------------------+ |
++---------------+--------+-----------------------------+
+| reserved      | 4      | 4                           |
++---------------+--------+-----------------------------+
+| pending_bytes | 8      | 8                           |
++---------------+--------+-----------------------------+
+| data_offset   | 16     | 8                           |
++---------------+--------+-----------------------------+
+| data_size     | 24     | 8                           |
++---------------+--------+-----------------------------+
+
+* *device_state* defines the state of the device:
+
+  The client initiates device state transition by writing the intended state.
+  The server must respond only after it has succesfully transitioned to the new
+  state. If an error occurs then the server must respond to the
+  VFIO_USER_REGION_WRITE operation with the Error field set accordingly and
+  must remain at the previous state, or in case of internal error it must
+  transtition to the error state, defined as
+  VFIO_DEVICE_STATE_RESUMING | VFIO_DEVICE_STATE_SAVING. The client must
+  re-read the device state in order to determine it afresh.
+
+  The following device states are defined:
+
+  +-----------+---------+----------+-----------------------------------+
+  | _RESUMING | _SAVING | _RUNNING | Description                       |
+  +===========+=========+==========+===================================+
+  | 0         | 0       | 0        | Device is stopped.                |
+  +-----------+---------+----------+-----------------------------------+
+  | 0         | 0       | 1        | Device is running, default state. |
+  +-----------+---------+----------+-----------------------------------+
+  | 0         | 1       | 0        | Stop-and-copy state               |
+  +-----------+---------+----------+-----------------------------------+
+  | 0         | 1       | 1        | Pre-copy state                    |
+  +-----------+---------+----------+-----------------------------------+
+  | 1         | 0       | 0        | Resuming                          |
+  +-----------+---------+----------+-----------------------------------+
+  | 1         | 0       | 1        | Invalid state                     |
+  +-----------+---------+----------+-----------------------------------+
+  | 1         | 1       | 1        | Error state                       |
+  +-----------+---------+----------+-----------------------------------+
+  | 1         | 1       | 1        | Invalid state                     |
+  +-----------+---------+----------+-----------------------------------+
+
+  Valid state transitions are shown in the following table:
+
+  +-------------------------+---------+---------+---------------+----------+----------+
+  | |darr| From / To |rarr| | Stopped | Running | Stop-and-copy | Pre-copy | Resuming |
+  +=========================+=========+=========+===============+==========+==========+
+  | Stopped                 |    \-   |    0    |       0       |    0     |     0    |
+  +-------------------------+---------+---------+---------------+----------+----------+
+  | Running                 |    1    |    \-   |       1       |    1     |     1    |
+  +-------------------------+---------+---------+---------------+----------+----------+
+  | Stop-and-copy           |    1    |    0    |       \-      |    0     |     0    |
+  +-------------------------+---------+---------+---------------+----------+----------+
+  | Pre-copy                |    0    |    0    |       1       |    \-    |     0    |
+  +-------------------------+---------+---------+---------------+----------+----------+
+  | Resuming                |    0    |    1    |       0       |    0     |     \-   |
+  +-------------------------+---------+---------+---------------+----------+----------+
+
+  A device is migrated to the destination as follows:
+
+  * The source client transitions the device state from the running state to
+    the pre-copy state. This transition is optional for the client but must be
+    supported by the server. The souce server starts sending device state data
+    to the source client through the migration region while the device is
+    running.
+
+  * The source client transitions the device state from the running state or the
+    pre-copy state to the stop-and-copy state. The source server stops the
+    device, saves device state and sends it to the source client through the
+    migration region.
+
+  The source client is responsible for sending the migration data to the
+  destination client.
+
+  A device is resumed on the destination as follows:
+
+  * The destination client transitions the device state from the running state
+    to the resuming state. The destination server uses the device state data
+    received through the migration region to resume the device.
+
+  * The destination client provides saved device state to the destination
+    server and then transitions the device to back to the running state.
+
+* *reserved* This field is reserved and any access to it must be ignored by the
+  server.
+
+* *pending_bytes* Remaining bytes to be migrated by the server. This field is
+  read only.
+
+* *data_offset* Offset in the migration region where the client must:
+
+  * read from, during the pre-copy or stop-and-copy state, or
+
+  * write to, during the resuming state.
+
+  This field is read only.
+
+* *data_size* Contains the size, in bytes, of the amount of data copied to:
+
+  * the source migration region by the source server during the pre-copy or
+    stop-and copy state, or
+
+  * the destination migration region by the destination client during the
+    resuming state.
+
+Device-specific data must be stored at any position after
+`struct vfio_device_migration_info`. Note that the migration region can be
+memory mappable, even partially. In practise, only the migration data portion
+can be memory mapped.
+
+The client processes device state data during the pre-copy and the
+stop-and-copy state in the following iterative manner:
+
+  1. The client reads `pending_bytes` to mark a new iteration. Repeated reads
+     of this field is an idempotent operation. If there are no migration data
+     to be consumed then the next step depends on the current device state:
+
+     * pre-copy: the client must try again.
+
+     * stop-and-copy: this procedure can end and the device can now start
+       resuming on the destination.
+
+  2. The client reads `data_offset`; at thich point the server must make
+     available a portion of migration data at this offset to be read by the
+     client, which must happen *before* completing the read operation. The
+     amount of data to be read must be stored in the `data_size` field, which
+     the client reads next.
+
+  3. The client reads `data_size` to determine the amount of migration data
+     available.
+
+  4. The client reads and processes the migration data.
+
+  5. Go to step 1.
+
+Note that the client can transition the device from the pre-copy state to the
+stop-and-copy state at any time; `pending_bytes` does not need to become zero.
+
+The client initializes the device state on the destination by setting the
+device state in the resuming state and writing the migration data to the
+destination migration region at `data_offset` offset. The client can write the
+source migration data in an iterative manner and the server must consume this
+data before completing each write operation, updating the `data_offset` field.
+The server must apply the source migration data on the device resume state. The
+client must write data on the same order and transction size as read.
+
+If an error occurs then the server must fail the read or write operation. It is
+an implementation detail of the client how to handle errors.
 
 VFIO_USER_DEVICE_GET_IRQ_INFO
 -----------------------------
