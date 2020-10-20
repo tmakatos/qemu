@@ -122,7 +122,7 @@ The client uses VFIO_USER_DEVICE_GET_REGION_INFO messages to query the server
 for information about the device's memory regions. This information describes:
 
 * Read and write permissions, whether it can be memory mapped, and whether it
-  supports additional capabilities.
+  supports additional capabilities (``VFIO_REGION_INFO_CAP_``).
 * Region index, size, and offset.
 
 When a region can be mapped by the client, the server provides a file
