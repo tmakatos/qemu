@@ -319,6 +319,9 @@ message command is sent from the client or the server.
 +----------------------------------+---------+-------------------+
 | VFIO_USER_DEVICE_RESET           | 13      | client -> server  |
 +----------------------------------+---------+-------------------+
+| VFIO_USER_DIRTY_PAGES            | 14      | client -> server  |
++----------------------------------+---------+-------------------+
+
 
 .. Note:: Some VFIO defines cannot be reused since their values are
    architecture-specific (e.g. VFIO_IOMMU_MAP_DMA).
@@ -485,28 +488,51 @@ reply to them. The table is an array of the following structure.  This
 structure is 32 bytes in size, so the message size is:
 16 + (# of table entries * 32).
 
+VFIO bitmap format
+^^^^^^^^^^^^^^^^^^^^^^
+
++--------+--------+------+
+| Name   | Offset | Size |
++========+========+======+
+| pgsize | 0      | 8    |
++--------+--------+------+
+| size   | 8      | 8    |
++--------+--------+------+
+| data   | 16     | 8    |
++--------+--------+------+
+
+* *pgsize* is the page size for the bitmap, in bytes.
+* *size* the size for the bitmap, in bytes.
+* *data* This field is unused in vfio-user.
+
+The VFIO bitmap structure is defined in ``<linux/vfio.h>``
+(``struct vfio_bitmap``).
+
 Table entry format
 ^^^^^^^^^^^^^^^^^^
 
-+-------------+--------+-------------+
-| Name        | Offset | Size        |
-+=============+========+=============+
-| Address     | 0      | 8           |
-+-------------+--------+-------------+
-| Size        | 8      | 8           |
-+-------------+--------+-------------+
-| Offset      | 16     | 8           |
-+-------------+--------+-------------+
-| Protections | 24     | 4           |
-+-------------+--------+-------------+
-| Flags       | 28     | 4           |
-+-------------+--------+-------------+
-|             | +-----+------------+ |
-|             | | Bit | Definition | |
-|             | +=====+============+ |
-|             | | 0   | Mappable   | |
-|             | +-----+------------+ |
-+-------------+--------+-------------+
++-------------+--------+--------------------------------------------------+
+| Name        | Offset | Size                                             |
++=============+========+==================================================+
+| Address     | 0      | 8                                                |
++-------------+--------+--------------------------------------------------+
+| Size        | 8      | 8                                                |
++-------------+--------+--------------------------------------------------+
+| Offset      | 16     | 8                                                |
++-------------+--------+--------------------------------------------------+
+| Protections | 24     | 4                                                |
++-------------+--------+--------------------------------------------------+
+| Flags       | 28     | 4                                                |
++-------------+--------+--------------------------------------------------+
+|             | +-----+-------------------------------------------------+ |
+|             | | Bit | Definition                                      | |
+|             | +=====+=================================================+ |
+|             | | 0   | Mappable/VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP   | |
+|             | +-----+-------------------------------------------------+ |
++-------------+--------+--------------------------------------------------+
+| Data        | 32     | variable                                         |
++-------------+--------+--------------------------------------------------+
+
 
 * *Address* is the base DMA address of the region.
 * *Size* is the size of the region.
@@ -517,7 +543,14 @@ Table entry format
 * *Flags* contain the following region attributes:
 
   * *Mappable* indicates that the region can be mapped via the mmap() system call
-    using the file descriptor provided in the message meta-data.
+    using the file descriptor provided in the message meta-data. This flag is
+    only valid for VFIO_USER_DMA_MAP.
+
+  * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
+    must be populated before unmapping the the DMA region. This flag is only
+    valid for VFIO_USER_DMA_UNMAP. The client must provide a
+    ``struct vfio_bitmap`` in the data field with the ``vfio_bitmap.pgsize``
+    and ``vfio_bitmap.size`` fields initialized.
 
 VFIO_USER_DMA_MAP
 """""""""""""""""
@@ -535,7 +568,16 @@ VFIO_USER_DMA_UNMAP
 Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
 then the server must release all references to that DMA region before replying,
 which includes potentially in flight DMA transactions. Removing a portion of a
-DMA region is possible. 
+DMA region is possible. If the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP bit is set
+in the request, the server must append to the header the ``struct vfio_bitmap``
+received in the command, followed by the bitmap. Thus, the message size the
+client should is expect is the size of the header plus the size of
+``struct vfio_bitmap`` plus ``vfio_bitmap.size`` bytes. Each bit in the bitmap
+represents one page of size ``vfio_bitmap.pgsize``.
+
+.. Note::
+ I suppose dirt page logging must have been previously enabled in order for the
+ client to be able to use the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP flag?
 
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
@@ -1359,6 +1401,100 @@ Message format
 +--------------+------------------------+
 
 This command message is sent from the client to the server to reset the device.
+
+VFIO_USER_DIRY_PAGES
+--------------------
+
+Message format
+^^^^^^^^^^^^^^
+
++--------------------+------------------------+
+| Name               | Value                  |
++====================+========================+
+| Message ID         | <ID>                   |
++--------------------+------------------------+
+| Command            | 14                     |
++--------------------+------------------------+
+| Message size       | 16                     |
++--------------------+------------------------+
+| Flags              | Reply bit set in reply |
++--------------------+------------------------+
+| Error              | 0/errno                |
++--------------------+------------------------+
+| VFIO Dirty bitmap  | <dirty bitmap>         |
++--------------------+------------------------+
+
+This command is analogous to VFIO_IOMMU_DIRTY_PAGES. It is sent by the client
+to the server in order to control logging of dirty pages, usually during a live
+migration. The VFIO dirty bitmap structure is defined in ``<linux/vfio.h>``
+(``struct vfio_iommu_type1_dirty_bitmap``).
+
+VFIO Dirty Bitmap Format
+^^^^^^^^^^^^^^^^^^^^^^^^
+
++-------+--------+-----------------------------------------+
+| Name  | Offset | Size                                    |
++=======+========+=========================================+
+| argsz | 0      | 4                                       |
++-------+--------+-----------------------------------------+
+| flags | 4      | 4                                       |
++-------+--------+-----------------------------------------+
+|       | +-----+----------------------------------------+ |
+|       | | Bit | Definition                             | |
+|       | +=====+========================================+ |
+|       | | 0   | VFIO_IOMMU_DIRTY_PAGES_FLAG_START      | |
+|       | +-----+----------------------------------------+ |
+|       | | 1   | VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP       | |
+|       | +-----+----------------------------------------+ |
+|       | | 2   | VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP | |
+|       | +-----+----------------------------------------+ |
++-------+--------+-----------------------------------------+
+| data  | 8      | 4                                       |
++-------+--------+-----------------------------------------+
+
+* *argsz* is the size of the VFIO dirty bitmap info structure.
+
+* *flags* defines the action to be performed by the server:
+
+  * *VFIO_IOMMU_DIRTY_PAGES_FLAG_START* instructs the server to start logging
+    pages it dirties. Logging continues until explicitly disabled by
+    VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP.
+
+  * *VFIO_IOMMU_DIRTY_PAGES_FLAG_STOP* instructs the server to stop logging
+    dirty pages.
+
+  * *VFIO_IOMMU_DIRTY_PAGES_FLAG_GET_BITMAP* requests from the server to return
+    the dirty bitmap for a specific IOVA range. The IOVA range is specified by
+    "VFIO dirty bitmap get" structure, which must immediatelly follow the
+    "VFIO dirty bitmap" structure, explained next. This operation is only valid
+    if logging of dirty pages has been previously started. The server must
+    respond the same way it does for VFIO_USER_DMA_UNMAP (the dirty pages
+    bitmap must follow the response header).
+
+  These flags are mutually exclusive with each other.
+
+* *data* This field is unused in vfio-user.
+
+VFIO Dirty Bitmap Get Format
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
++--------+--------+------+
+| Name   | Offset | Size |
++========+========+======+
+| iova   | 0      | 8    |
++--------+--------+------+
+| size   | 8      | 8    |
++--------+--------+------+
+| bitmap | 16     | 24   |
++--------+--------+------+
+
+* *iova* is the IOVA offset
+
+* *size* is the size of the IOVA region
+
+* *bitmap* is the VFIO bitmap (``struct vfio_bitmap``), with the same semantics
+  as VFIO_USER_DMA_UNMAP.
+
 
 Appendices
 ==========
