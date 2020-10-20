@@ -111,7 +111,7 @@ Device Information
 The client uses a VFIO_USER_DEVICE_GET_INFO message to query the server for
 information about the device. This information includes:
 
-* The device type and capabilities,
+* The device type and whether it supports reset (``VFIO_DEVICE_FLAGS_``),
 * the number of device regions, and
 * the device presents to the client the number of interrupt types the device
   supports.
