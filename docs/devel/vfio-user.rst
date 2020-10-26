@@ -427,13 +427,13 @@ Common capabilities:
 +---------------+------------------------------------------------------------+
 | ``migration`` | Migration capability object with the following format:     |
 |               |                                                            |
-|               | +-------------------+------------------------------------+ |
-|               | | Name              | Description                        | |
-|               | +===================+====================================+ |
-|               | | ``pgsize_bitmap`` | Page size of dirty pages bitmap.   | |
-|               | |                   | The smallest between the client    | |
-|               | |                   | and the server is used.            | |
-|               | +-------------------+------------------------------------+ |
+|               | +------------+-------------------------------------------+ |
+|               | | Name       | Description                               | |
+|               | +============+===========================================+ |
+|               | | ``pgsize`` | Page size of dirty pages bitmap. The      | |
+|               | |            | smallest between the client and the       | |
+|               | |            | server is used.                           | |
+|               | +------------+-------------------------------------------+ |
 +---------------+------------------------------------------------------------+
 
 .. _Version:
