@@ -611,10 +611,6 @@ client should is expect is the size of the header plus the size of
 ``struct vfio_bitmap`` plus ``vfio_bitmap.size`` bytes. Each bit in the bitmap
 represents one page of size ``vfio_bitmap.pgsize``.
 
-.. Note::
- I suppose dirt page logging must have been previously enabled in order for the
- client to be able to use the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP flag?
-
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
 
