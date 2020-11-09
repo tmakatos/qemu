@@ -490,8 +490,8 @@ When making a change to this specification, the protocol version number must
 be included in the form "added in version X.Y"
 
 
-VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP
------------------------------------------
+VFIO_USER_DMA_MAP
+-----------------
 
 Message Format
 ^^^^^^^^^^^^^^
@@ -501,7 +501,7 @@ Message Format
 +==============+========================+
 | Message ID   | <ID>                   |
 +--------------+------------------------+
-| Command      | MAP=2, UNMAP=3         |
+| Command      | 2                      |
 +--------------+------------------------+
 | Message size | 16 + table size        |
 +--------------+------------------------+
@@ -515,14 +515,131 @@ Message Format
 This command message is sent by the client to the server to inform it of the
 memory regions the server can access. It must be sent before the server can
 perform any DMA to the client. It is normally sent directly after the version
-handshake is completed, but may also occur when memory is added to or
-subtracted from the client, or if the client uses a vIOMMU. If the client does
-not expect the server to perform DMA then it does not need to send to the
-server VFIO_USER_DMA_MAP and VFIO_USER_DMA_UNMAP commands. If the server does
-not need to perform DMA then it can ignore such commands but it must still
-reply to them. The table is an array of the following structure.  This
-structure is 32 bytes in size, so the message size is:
+handshake is completed, but may also occur when memory is added to the client,
+or if the client uses a vIOMMU. If the client does not expect the server to
+perform DMA then it does not need to send to the server VFIO_USER_DMA_MAP
+commands. If the server does not need to perform DMA then it can ignore such
+commands but it must still reply to them. The table is an array of the
+following structure:
+
+Table entry format
+^^^^^^^^^^^^^^^^^^
+
++-------------+--------+-------------+
+| Name        | Offset | Size        |
++=============+========+=============+
+| Address     | 0      | 8           |
++-------------+--------+-------------+
+| Size        | 8      | 8           |
++-------------+--------+-------------+
+| Offset      | 16     | 8           |
++-------------+--------+-------------+
+| Protections | 24     | 4           |
++-------------+--------+-------------+
+| Flags       | 28     | 4           |
++-------------+--------+-------------+
+|             | +-----+------------+ |
+|             | | Bit | Definition | |
+|             | +=====+============+ |
+|             | | 0   | Mappable   | |
+|             | +-----+------------+ |
++-------------+--------+-------------+
+
+* *Address* is the base DMA address of the region.
+* *Size* is the size of the region.
+* *Offset* is the file offset of the region with respect to the associated file
+  descriptor.
+* *Protections* are the region's protection attributes as encoded in
+  ``<sys/mman.h>``.
+* *Flags* contains the following region attributes:
+
+  * *Mappable* indicates that the region can be mapped via the mmap() system
+    call using the file descriptor provided in the message meta-data.
+
+This structure is 32 bytes in size, so the message size is:
 16 + (# of table entries * 32).
+
+If a DMA region being added can be directly mapped by the server, an array of
+file descriptors must be sent as part of the message meta-data. Each mappable
+region entry must have a corresponding file descriptor. On AF_UNIX sockets, the
+file descriptors must be passed as SCM_RIGHTS type ancillary data. Otherwise,
+if a DMA region cannot be directly mapped by the server, it can be accessed by
+the server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained
+in `Read and Write Operations`_. A command to map over an existing region must
+be failed by the server with ``EEXIST`` set in error field in the reply.
+
+
+VFIO_USER_DMA_UNMAP
+-------------------
+
+Message Format
+^^^^^^^^^^^^^^
+
++--------------+------------------------+
+| Name         | Value                  |
++==============+========================+
+| Message ID   | <ID>                   |
++--------------+------------------------+
+| Command      | 3                      |
++--------------+------------------------+
+| Message size | 16 + table size        |
++--------------+------------------------+
+| Flags        | Reply bit set in reply |
++--------------+------------------------+
+| Error        | 0/errno                |
++--------------+------------------------+
+| Table        | array of table entries |
++--------------+------------------------+
+
+This command message is sent by the client to the server to inform it that a
+DMA region, previously made available via a VFIO_USER_DMA_MAP command message,
+is no longer available for DMA. It typically occurs when memory is subtracted
+from the client or if the client uses a vIOMMU. If the client does not expect
+the server to perform DMA then it does not need to send to the server
+VFIO_USER_DMA_UNMAP commands. If the server does not need to perform DMA then
+it can ignore such commands but it must still reply to them. The table is an
+array of the following structure:
+
+Table entry format
+^^^^^^^^^^^^^^^^^^
+
++--------------+--------+---------------------------------------+
+| Name         | Offset | Size                                  |
++==============+========+=======================================+
+| Address      | 0      | 8                                     |
++--------------+--------+---------------------------------------+
+| Size         | 8      | 8                                     |
++--------------+--------+---------------------------------------+
+| Offset       | 16     | 8                                     |
++--------------+--------+---------------------------------------+
+| Protections  | 24     | 4                                     |
++--------------+--------+---------------------------------------+
+| Flags        | 28     | 4                                     |
++--------------+--------+---------------------------------------+
+|              | +-----+--------------------------------------+ |
+|              | | Bit | Definition                           | |
+|              | +=====+======================================+ |
+|              | | 0   | VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP | |
+|              | +-----+--------------------------------------+ |
++--------------+--------+---------------------------------------+
+| VFIO Bitmaps | 32     | variable                              |
++--------------+--------+---------------------------------------+
+
+* *Address* is the base DMA address of the region.
+* *Size* is the size of the region.
+* *Offset* is the file offset of the region with respect to the associated file
+  descriptor.
+* *Protections* are the region's protection attributes as encoded in
+  ``<sys/mman.h>``.
+* *Flags* contains the following region attributes:
+
+  * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
+    must be populated before unmapping the DMA region. The client must provide
+    a ``struct vfio_bitmap`` in the VFIO bitmaps field for each region, with
+    the ``vfio_bitmap.pgsize`` and ``vfio_bitmap.size`` fields initialized.
+
+* *VFIO Bitmaps* contains one ``struct vfio_bitmap`` per region if
+  ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags.
 
 VFIO bitmap format
 ^^^^^^^^^^^^^^^^^^
@@ -538,78 +655,27 @@ VFIO bitmap format
 +--------+--------+------+
 
 * *pgsize* is the page size for the bitmap, in bytes.
-* *size* the size for the bitmap, in bytes, excluding the VFIO bitmap header.
+* *size* is the size for the bitmap, in bytes, excluding the VFIO bitmap header.
 * *data* This field is unused in vfio-user.
 
 The VFIO bitmap structure is defined in ``<linux/vfio.h>``
 (``struct vfio_bitmap``).
 
-Table entry format
-^^^^^^^^^^^^^^^^^^
+If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
+of the message is: 16 + (# of table entries * 32).
+If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is set in Flags then the size of
+the message is: 16 + (# of table entries * 56).
 
-+-------------+--------+--------------------------------------------------+
-| Name        | Offset | Size                                             |
-+=============+========+==================================================+
-| Address     | 0      | 8                                                |
-+-------------+--------+--------------------------------------------------+
-| Size        | 8      | 8                                                |
-+-------------+--------+--------------------------------------------------+
-| Offset      | 16     | 8                                                |
-+-------------+--------+--------------------------------------------------+
-| Protections | 24     | 4                                                |
-+-------------+--------+--------------------------------------------------+
-| Flags       | 28     | 4                                                |
-+-------------+--------+--------------------------------------------------+
-|             | +-----+-------------------------------------------------+ |
-|             | | Bit | Definition                                      | |
-|             | +=====+=================================================+ |
-|             | | 0   | Mappable/VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP   | |
-|             | +-----+-------------------------------------------------+ |
-+-------------+--------+--------------------------------------------------+
-| Data        | 32     | variable                                         |
-+-------------+--------+--------------------------------------------------+
-
-
-* *Address* is the base DMA address of the region.
-* *Size* is the size of the region.
-* *Offset* is the file offset of the region with respect to the associated file
-  descriptor.
-* *Protections* are the region's protection attributes as encoded in
-  ``<sys/mman.h>``.
-* *Flags* contain the following region attributes:
-
-  * *Mappable* indicates that the region can be mapped via the mmap() system call
-    using the file descriptor provided in the message meta-data. This flag is
-    only valid for VFIO_USER_DMA_MAP.
-
-  * *VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP* indicates that a dirty page bitmap
-    must be populated before unmapping the the DMA region. This flag is only
-    valid for VFIO_USER_DMA_UNMAP. The client must provide a
-    ``struct vfio_bitmap`` in the data field with the ``vfio_bitmap.pgsize``
-    and ``vfio_bitmap.size`` fields initialized.
-
-VFIO_USER_DMA_MAP
-"""""""""""""""""
-If a DMA region being added can be directly mapped by the server, an array of
-file descriptors must be sent as part of the message meta-data. Each mappable
-region entry must have a corresponding file descriptor. On AF_UNIX sockets, the
-file descriptors must be passed as SCM_RIGHTS type ancillary data. Otherwise,
-if a DMA region cannot be directly mapped by the server, it can be accessed by
-the server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained
-in `Read and Write Operations`_. A command to map over an existing region must
-be failed by the server with ``EEXIST`` set in error field in the reply.
-
-VFIO_USER_DMA_UNMAP
-"""""""""""""""""""
 Upon receiving a VFIO_USER_DMA_UNMAP command, if the file descriptor is mapped
 then the server must release all references to that DMA region before replying,
 which includes potentially in flight DMA transactions. Removing a portion of a
 DMA region is possible. If the VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP bit is set
 in the request, the server must append to the header the ``struct vfio_bitmap``
-received in the command, followed by the bitmap. Thus, the message size the
-client should is expect is the size of the header plus the size of
-``struct vfio_bitmap`` plus ``vfio_bitmap.size`` bytes. Each bit in the bitmap
-represents one page of size ``vfio_bitmap.pgsize``.
+received in the command followed by the bitmap, for each region. Thus, the
+message size the client should expect is the size of the header plus the size
+of ``struct vfio_bitmap`` plus ``vfio_bitmap.size`` bytes for each region. Each
+bit in the bitmap represents one page of size ``vfio_bitmap.pgsize``.
+
 
 VFIO_USER_DEVICE_GET_INFO
 -------------------------
