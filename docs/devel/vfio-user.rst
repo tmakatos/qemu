@@ -232,6 +232,9 @@ An example is a frame buffer device, where the device may allow concurrent
 access to different areas of video memory, but may have indeterminate behavior
 if concurrent acceses are performed to command or status registers.
 
+Note that unrelated messages sent from the sevrer to the client can appear in
+between a client to server request/reply and vice versa.
+
 Socket Disconnection Behavior
 -----------------------------
 The server and the client can disconnect from each other, either intentionally
