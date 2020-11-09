@@ -1432,7 +1432,7 @@ Message format
 | DMA info     | DMA read/write data    |
 +--------------+------------------------+
 
-This command message is sent from the server to the client to write to server
+This command message is sent from the server to the client to write to client
 memory.  The command message must contain the data to be written, and its count
 field must contain the amount of write data. The count field in the reply
 message must be zero.
@@ -1496,8 +1496,8 @@ Message format
 
 This command message is sent from the client to the server to reset the device.
 
-VFIO_USER_DIRY_PAGES
---------------------
+VFIO_USER_DIRTY_PAGES
+---------------------
 
 Message format
 ^^^^^^^^^^^^^^
