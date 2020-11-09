@@ -591,13 +591,13 @@ Table entry format
 VFIO_USER_DMA_MAP
 """""""""""""""""
 If a DMA region being added can be directly mapped by the server, an array of
-file descriptors must be sent as part of the message meta-data. Each region
-entry must have a corresponding file descriptor. On AF_UNIX sockets, the file
-descriptors must be passed as SCM_RIGHTS type ancillary data. Otherwise, if a
-DMA region cannot be directly mapped by the server, it can be accessed by the
-server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained in
-`Read and Write Operations`_. A command to map over an existing region must be
-failed by the server with ``EEXIST`` set in error field in the reply.
+file descriptors must be sent as part of the message meta-data. Each mappable
+region entry must have a corresponding file descriptor. On AF_UNIX sockets, the
+file descriptors must be passed as SCM_RIGHTS type ancillary data. Otherwise,
+if a DMA region cannot be directly mapped by the server, it can be accessed by
+the server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained
+in `Read and Write Operations`_. A command to map over an existing region must
+be failed by the server with ``EEXIST`` set in error field in the reply.
 
 VFIO_USER_DMA_UNMAP
 """""""""""""""""""
