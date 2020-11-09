@@ -219,18 +219,18 @@ protocol.
 Command Concurrency
 -------------------
 A client may pipeline multiple commands without waiting for previous command
-replies.  The server will process commands in the order they are received.
-A consequence of this is if a client issues a command with the *No_reply* bit,
+replies.  The server will process commands in the order they are received.  A
+consequence of this is if a client issues a command with the *No_reply* bit,
 then subseqently issues a command without *No_reply*, the older command will
 have been processed before the reply to the younger command is sent by the
-server.  The client must be aware of the device's capability to process concurrent
-commands if pipelining is used.  For example, pipelining allows multiple client
-threads to concurently access device memory; the client must ensure these acceses
-obey device semantics.
+server.  The client must be aware of the device's capability to process
+concurrent commands if pipelining is used.  For example, pipelining allows
+multiple client threads to concurently access device memory; the client must
+ensure these acceses obey device semantics.
 
-An example is a frame buffer device, where the device may allow concurrent access
-to different areas of video memory, but may have indeterminate behavior if concurrent
-acceses are performed to command or status registers.
+An example is a frame buffer device, where the device may allow concurrent
+access to different areas of video memory, but may have indeterminate behavior
+if concurrent acceses are performed to command or status registers.
 
 Socket Disconnection Behavior
 -----------------------------
