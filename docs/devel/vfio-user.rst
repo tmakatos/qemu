@@ -390,65 +390,85 @@ bit set, plus any additional data.
 VFIO_USER_VERSION
 -----------------
 
+This is the initial message sent by the client after the socket connection is
+established:
+
 Message format
 ^^^^^^^^^^^^^^
 
-+--------------+------------------------+
-| Name         | Value                  |
-+==============+========================+
-| Message ID   | <ID>                   |
-+--------------+------------------------+
-| Command      | 1                      |
-+--------------+------------------------+
-| Message size | 16 + version length    |
-+--------------+------------------------+
-| Flags        | Reply bit set in reply |
-+--------------+------------------------+
-| Error        | 0/errno                |
-+--------------+------------------------+
-| Version      | JSON byte array        |
-+--------------+------------------------+
++--------------+-------------------------------------------+
+| Name         | Value                                     |
++==============+===========================================+
+| Message ID   | <ID>                                      |
++--------------+-------------------------------------------+
+| Command      | 1                                         |
++--------------+-------------------------------------------+
+| Message size | 16 + version header + version data length |
++--------------+-------------------------------------------+
+| Flags        | Reply bit set in reply                    |
++--------------+-------------------------------------------+
+| Error        | 0/errno                                   |
++--------------+-------------------------------------------+
+| Version      | version header                            |
++--------------+-------------------------------------------+
 
-This is the initial message sent by the server after the socket connection is
-established. The version is in JSON format, and the following objects must be
-included:
+Version Header Format
+^^^^^^^^^^^^^^^^^^^^^
 
-+--------------+--------+---------------------------------------------------+
-| Name         | Type   | Description                                       |
-+==============+========+===================================================+
-| version      | object | ``{"major": <number>, "minor": <number>}``        |
-|              |        |                                                   |
-|              |        | Version supported by the sender, e.g. "0.1".      |
-+--------------+--------+---------------------------------------------------+
-| capabilities | array  | Reserved. Can be omitted for v0.1, otherwise must |
-|              |        | be empty.                                         |
-+--------------+--------+---------------------------------------------------+
++---------------+--------+------------------------------------------------+
+| Name          | Offset | Size                                           |
++===============+========+================================================+
+| version major | 16     | 2                                              |
++---------------+--------+------------------------------------------------+
+| version minor | 18     | 2                                              |
++---------------+--------+------------------------------------------------+
+| version data  | 22     | variable (including terminating NUL            |
+|               |        | character). Optional.                          |
++---------------+--------+------------------------------------------------+
 
-Common capabilities:
+Version Data Format
+^^^^^^^^^^^^^^^^^^^
 
-+---------------+------------------------------------------------------------+
-| Name          | Description                                                |
-+===============+============================================================+
-| ``max_fds``   | Maximum number of file descriptors that can be received by |
-|               | the sender. Optional.                                      |
-+---------------+------------------------------------------------------------+
-| ``migration`` | Migration capability object with the following format:     |
-|               |                                                            |
-|               | +------------+-------------------------------------------+ |
-|               | | Name       | Description                               | |
-|               | +============+===========================================+ |
-|               | | ``pgsize`` | Page size of dirty pages bitmap. The      | |
-|               | |            | smallest between the client and the       | |
-|               | |            | server is used.                           | |
-|               | +------------+-------------------------------------------+ |
-+---------------+------------------------------------------------------------+
+The version data is an optional JSON byte array with the following format:
+
++--------------+------------------+-------------------------------------------+
+| Name         | Type             | Description                               |
++==============+==================+===========================================+
+| capabilities | collection of    | Contains common capabilities that the     |
+|              | name/value pairs | sender supports. Optional.                |
++--------------+------------------+-------------------------------------------+
+
+Capabilities:
+
++---------------+------------------+------------------------------------------+
+| Name          | Type             | Description                              |
++===============+==================+==========================================+
+| ``max_fds``   | number           | Maximum number of file descriptors that  |
+|               |                  | can be received by the sender. Optional. |
+|               |                  | If not specified then the receiver must  |
+|               |                  | assume ``max_fds=1``.                    |
++---------------+------------------+------------------------------------------+
+| ``migration`` | collection of    | Migration capability parameters. If      |
+|               | name/value pairs | missing then migration is not supported  |
+|               |                  | by the sender.                           |
++---------------+------------------+------------------------------------------+
+
+The migration capability contains the following name/value pairs:
+
++------------+--------+-------------------------------------------------------+
+| Name       | Type   | Description                                           |
++============+========+=======================================================+
+| ``pgsize`` | number | Page size of dirty pages bitmap. The smallest between |
+|            |        | the client and the server is used.                    |
++------------+--------+-------------------------------------------------------+
+
 
 .. _Version:
 
 Versioning and Feature Support
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Upon accepting a connection, the server must send a VFIO_USER_VERSION message
-proposing a protocol version and a set of capabilities. The client compares
+Upon accepting a connection, the client must send a VFIO_USER_VERSION message
+proposing a protocol version and a set of capabilities. The server compares
 these with the versions and capabilities it supports and sends a
 VFIO_USER_VERSION reply according to the following rules.
 
@@ -456,8 +476,8 @@ VFIO_USER_VERSION reply according to the following rules.
   does not support the proposed major, it closes the connection.
 * The minor version in the reply must be equal to or less than the minor
   version proposed.
-* The capability list must be a subset of those proposed. If the client
-  requires a capability the server did not include, it closes the connection.
+* The capability list must be a subset of those proposed. If the server
+  requires a capability the client did not include, it closes the connection.
 
 The protocol major version will only change when incompatible protocol changes
 are made, such as changing the message format. The minor version may change
