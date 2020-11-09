@@ -361,7 +361,10 @@ followed by message-specific data described in the sections below.
 | <message data> | 16     | variable    |
 +----------------+--------+-------------+
 
-* *Message ID* identifies the message, and is echoed in the command's reply message.
+* *Message ID* identifies the message, and is echoed in the command's reply
+  message. Message IDs belong entirely to the sender, can be re-used (even
+  concurrently) and the receiver must not make any assumptions about their
+  uniqueness.
 * *Command* specifies the command to be executed, listed in Commands_.
 * *Message size* contains the size of the entire message, including the header.
 * *Flags* contains attributes of the message:
