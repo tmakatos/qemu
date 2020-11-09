@@ -538,7 +538,7 @@ VFIO bitmap format
 +--------+--------+------+
 
 * *pgsize* is the page size for the bitmap, in bytes.
-* *size* the size for the bitmap, in bytes.
+* *size* the size for the bitmap, in bytes, excluding the VFIO bitmap header.
 * *data* This field is unused in vfio-user.
 
 The VFIO bitmap structure is defined in ``<linux/vfio.h>``
