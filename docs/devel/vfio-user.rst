@@ -380,7 +380,8 @@ followed by message-specific data described in the sections below.
   * *Error* in a reply message indicates the command being acknowledged had
     an error. In this case, the *Error* field will be valid.
 
-* *Error* in a reply message is a UNIX errno value. It is reserved in a command message.
+* *Error* in a reply message is an optional UNIX errno value. It may be zero
+  even if the Error bit is set in Flags. It is reserved in a command message.
 
 Each command message in Commands_ must be replied to with a reply message, unless the
 message sets the *No_Reply* bit.  The reply consists of the header with the *Reply*
