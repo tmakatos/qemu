@@ -525,7 +525,7 @@ structure is 32 bytes in size, so the message size is:
 16 + (# of table entries * 32).
 
 VFIO bitmap format
-^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
 
 +--------+--------+------+
 | Name   | Offset | Size |
