@@ -431,36 +431,36 @@ Version Data Format
 
 The version data is an optional JSON byte array with the following format:
 
-+--------------+------------------+-------------------------------------------+
-| Name         | Type             | Description                               |
-+==============+==================+===========================================+
-| capabilities | collection of    | Contains common capabilities that the     |
-|              | name/value pairs | sender supports. Optional.                |
-+--------------+------------------+-------------------------------------------+
++--------------------+------------------+-----------------------------------+
+| Name               | Type             | Description                       |
++====================+==================+===================================+
+| ``"capabilities"`` | collection of    | Contains common capabilities that |
+|                    | name/value pairs | the sender supports. Optional.    |
++--------------------+------------------+-----------------------------------+
 
 Capabilities:
 
-+---------------+------------------+------------------------------------------+
-| Name          | Type             | Description                              |
-+===============+==================+==========================================+
-| ``max_fds``   | number           | Maximum number of file descriptors that  |
-|               |                  | can be received by the sender. Optional. |
-|               |                  | If not specified then the receiver must  |
-|               |                  | assume ``max_fds=1``.                    |
-+---------------+------------------+------------------------------------------+
-| ``migration`` | collection of    | Migration capability parameters. If      |
-|               | name/value pairs | missing then migration is not supported  |
-|               |                  | by the sender.                           |
-+---------------+------------------+------------------------------------------+
++-----------------+------------------+-------------------------------------+
+| Name            | Type             | Description                         |
++=================+==================+=====================================+
+| ``"max_fds"``   | number           | Maximum number of file descriptors  |
+|                 |                  | the can be received by the sender.  |
+|                 |                  | Optional. If not specified then the |
+|                 |                  | receiver must assume ``max_fds=1``. |
++-----------------+------------------+-------------------------------------+
+| ``"migration"`` | collection of    | Migration capability parameters. If |
+|                 | name/value pairs | missing then migration is not       |
+|                 |                  | supported by the sender.            |
++-----------------+------------------+-------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
-+------------+--------+-------------------------------------------------------+
-| Name       | Type   | Description                                           |
-+============+========+=======================================================+
-| ``pgsize`` | number | Page size of dirty pages bitmap. The smallest between |
-|            |        | the client and the server is used.                    |
-+------------+--------+-------------------------------------------------------+
++--------------+--------+-----------------------------------------------+
+| Name         | Type   | Description                                   |
++==============+========+===============================================+
+| ``"pgsize"`` | number | Page size of dirty pages bitmap. The smallest |
+|              |        | between the client and the server is used.    |
++--------------+--------+-----------------------------------------------+
 
 
 .. _Version:
