@@ -442,18 +442,25 @@ The version data is an optional JSON byte array with the following format:
 
 Capabilities:
 
-+-----------------+------------------+-------------------------------------+
-| Name            | Type             | Description                         |
-+=================+==================+=====================================+
-| ``"max_fds"``   | number           | Maximum number of file descriptors  |
-|                 |                  | the can be received by the sender.  |
-|                 |                  | Optional. If not specified then the |
-|                 |                  | receiver must assume ``max_fds=1``. |
-+-----------------+------------------+-------------------------------------+
-| ``"migration"`` | collection of    | Migration capability parameters. If |
-|                 | name/value pairs | missing then migration is not       |
-|                 |                  | supported by the sender.            |
-+-----------------+------------------+-------------------------------------+
++--------------------+------------------+-------------------------------------+
+| Name               | Type             | Description                         |
++====================+==================+=====================================+
+| ``"max_fds"``      | number           | Maximum number of file descriptors  |
+|                    |                  | the can be received by the sender.  |
+|                    |                  | Optional. If not specified then the |
+|                    |                  | receiver must assume                |
+|                    |                  | ``"max_fds"=1``.                    |
++--------------------+------------------+-------------------------------------+
+| ``"max_msg_size"`` | number           | Maximum message size in bytes that  |
+|                    |                  | the receiver can handle, including  |
+|                    |                  | the header. Optional. If not        |
+|                    |                  | specified then the receiver must    |
+|                    |                  | assume ``"max_msg_size"=4096``.     |
++--------------------+------------------+-------------------------------------+
+| ``"migration"``    | collection of    | Migration capability parameters. If |
+|                    | name/value pairs | missing then migration is not       |
+|                    |                  | supported by the sender.            |
++--------------------+------------------+-------------------------------------+
 
 The migration capability contains the following name/value pairs:
 
