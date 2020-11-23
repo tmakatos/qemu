@@ -387,6 +387,8 @@ Each command message in Commands_ must be replied to with a reply message, unles
 message sets the *No_Reply* bit.  The reply consists of the header with the *Reply*
 bit set, plus any additional data.
 
+If an error occurs, the reply message must only include the reply header.
+
 VFIO_USER_VERSION
 -----------------
 
