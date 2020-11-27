@@ -577,6 +577,18 @@ the server using VFIO_USER_DMA_READ and VFIO_USER_DMA_WRITE messages, explained
 in `Read and Write Operations`_. A command to map over an existing region must
 be failed by the server with ``EEXIST`` set in error field in the reply.
 
+Adding multiple DMA regions can partially fail. The response does not indicate
+which regions were added and which were not, therefore it is a client
+implementation detail how to recover from the failure.
+
+.. Note::
+   The server can optionally remove succesfully added DMA regions making this
+   operation atomic.
+   The client can recover by attempting to unmap one by one all the DMA regions
+   in the VFIO_USER_DMA_MAP command, ignoring failures for regions that do not
+   exist.
+
+
 
 VFIO_USER_DMA_UNMAP
 -------------------
