@@ -1660,3 +1660,5 @@ vfio-user backend program conventions are based on the vhost-user ones.
     ``--socket-path``
 * The backend program must be accompanied with a JSON file stored under
   ``/usr/share/vfio-user``.
+
+TODO add schema similar to docs/interop/vhost-user.json.
