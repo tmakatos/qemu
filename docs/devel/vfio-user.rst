@@ -89,9 +89,9 @@ implementation.
 
 Connection Initiation
 ^^^^^^^^^^^^^^^^^^^^^
-After the client connects to the server, the initial server message is
+After the client connects to the server, the initial client message is
 VFIO_USER_VERSION to propose a protocol version and set of capabilities to
-apply to the session. The client replies with a compatible version and set of
+apply to the session. The server replies with a compatible version and set of
 capabilities it supports, or closes the connection if it cannot support the
 advertised version.
 
@@ -296,7 +296,7 @@ message command is sent from the client or the server.
 +----------------------------------+---------+-------------------+
 | Name                             | Command | Request Direction |
 +==================================+=========+===================+
-| VFIO_USER_VERSION                | 1       | server -> client  |
+| VFIO_USER_VERSION                | 1       | client -> server  |
 +----------------------------------+---------+-------------------+
 | VFIO_USER_DMA_MAP                | 2       | client -> server  |
 +----------------------------------+---------+-------------------+
@@ -476,7 +476,7 @@ The migration capability contains the following name/value pairs:
 
 Versioning and Feature Support
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Upon accepting a connection, the client must send a VFIO_USER_VERSION message
+Upon establishing a connection, the client must send a VFIO_USER_VERSION message
 proposing a protocol version and a set of capabilities. The server compares
 these with the versions and capabilities it supports and sends a
 VFIO_USER_VERSION reply according to the following rules.
