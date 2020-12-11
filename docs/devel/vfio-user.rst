@@ -785,10 +785,7 @@ Message format
 
 This command message is sent by the client to the server to query for
 information about device memory regions. The VFIO region info structure is
-defined in ``<linux/vfio.h>`` (``struct vfio_region_info``). Since the client
-does not know the size of the capabilities, the size of the reply it should
-expect is 48 plus any capabilities whose size is indicated in the size field of
-the reply header.
+defined in ``<linux/vfio.h>`` (``struct vfio_region_info``).
 
 VFIO region info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -844,6 +841,15 @@ VFIO region info format
 * *offset* is the offset given to the mmap() system call for regions with the
   MMAP attribute. It is also used as the base offset when mapping a VFIO
   sparse mmap area, described below.
+
+The client sets the ``argsz`` field to indicate the maximum size of the
+response that the server can send, which must be at least the size of the
+response header plus the size of VFIO region info. If the region contains
+capabilities whose size exceeds ``argsz``, then the server must respond only with
+the response header and VFIO region info, omitting the region capabilities, and
+setting in ``argsz`` the buffer size required to store the initial response
+*plus* the region capabilities. The client then retries the operation with a
+larger receive buffer.
 
 VFIO Region capabilities
 ^^^^^^^^^^^^^^^^^^^^^^^^
