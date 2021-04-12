@@ -610,17 +610,6 @@ static inline QEMUTimer *timer_new_ms(QEMUClockType type, QEMUTimerCB *cb,
 void timer_deinit(QEMUTimer *ts);
 
 /**
- * timer_free:
- * @ts: the timer
- *
- * Free a timer (it must not be on the active list)
- */
-static inline void timer_free(QEMUTimer *ts)
-{
-    g_free(ts);
-}
-
-/**
  * timer_del:
  * @ts: the timer
  *
@@ -630,6 +619,21 @@ static inline void timer_free(QEMUTimer *ts)
  * freed while this function is running.
  */
 void timer_del(QEMUTimer *ts);
+
+/**
+ * timer_free:
+ * @ts: the timer
+ *
+ * Free a timer. This will call timer_del() for you to remove
+ * the timer from the active list if it was still active.
+ */
+static inline void timer_free(QEMUTimer *ts)
+{
+    if (ts) {
+        timer_del(ts);
+        g_free(ts);
+    }
+}
 
 /**
  * timer_mod_ns:
@@ -793,6 +797,14 @@ static inline int64_t get_max_clock_jump(void)
     return 60 * NANOSECONDS_PER_SECOND;
 }
 
+/**
+ * timer_deadline_ms:
+ *
+ * Returns the remaining miliseconds for @timer to expire, or zero
+ * if the timer is no longer pending.
+ */
+int64_t timer_deadline_ms(QEMUTimer *timer);
+
 /*
  * Low level clock functions
  */
@@ -805,6 +817,8 @@ static inline int64_t get_clock_realtime(void)
     gettimeofday(&tv, NULL);
     return tv.tv_sec * 1000000000LL + (tv.tv_usec * 1000);
 }
+
+extern int64_t clock_start;
 
 /* Warning: don't insert tracepoints into these functions, they are
    also used by simpletrace backend and tracepoints would cause
