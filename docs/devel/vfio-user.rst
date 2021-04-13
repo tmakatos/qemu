@@ -688,7 +688,7 @@ following format:
 The VFIO bitmap structure is defined in ``<linux/vfio.h>``
 (``struct vfio_bitmap``).
 
-Each ``struct_vfio_bitmap`` entry is followed by the region's bitmap. Each bit
+Each ``struct vfio_bitmap`` entry is followed by the region's bitmap. Each bit
 in the bitmap represents one page of size ``struct vfio_bitmap.pgsize``.
 
 If ``VFIO_DMA_UNMAP_FLAG_GET_DIRTY_BITMAP`` is not set in Flags then the size
@@ -714,7 +714,7 @@ Message format
 +--------------+----------------------------+
 | Command      | 4                          |
 +--------------+----------------------------+
-| Message size | 16 in command, 32 in reply |
+| Message size | 32                         |
 +--------------+----------------------------+
 | Flags        | Reply bit set in reply     |
 +--------------+----------------------------+
@@ -724,9 +724,8 @@ Message format
 +--------------+----------------------------+
 
 This command message is sent by the client to the server to query for basic
-information about the device. Only the message header is needed in the command
-message.  The VFIO device info structure is defined in ``<linux/vfio.h>``
-(``struct vfio_device_info``).
+information about the device. The VFIO device info structure is defined in
+``<linux/vfio.h>`` (``struct vfio_device_info``).
 
 VFIO device info format
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -751,7 +750,9 @@ VFIO device info format
 | num_irqs    | 28     | 4                        |
 +-------------+--------+--------------------------+
 
-* *argsz* is the size of the VFIO device info structure.
+* *argsz* is the size of the VFIO device info structure. This is the only field
+that should be set to non-zero in the request, identifying the client's expected
+size. Currently this is a fixed value.
 * *flags* contains the following device attributes.
 
   * VFIO_DEVICE_FLAGS_RESET indicates that the device supports the
@@ -1275,6 +1276,8 @@ VFIO IRQ set format
     was sent in the message meta-data. These descriptors will be signalled when
     the action defined by the action flags occurs. In AF_UNIX sockets, the
     descriptors are sent as SCM_RIGHTS type ancillary data.
+    If no file descriptors are provided, this de-assigns the specified
+    previously configured interrupts.
   * *VFIO_IRQ_SET_ACTION_MASK* indicates a masking event. It can be used with
     VFIO_IRQ_SET_DATA_BOOL or VFIO_IRQ_SET_DATA_NONE to mask an interrupt, or
     with VFIO_IRQ_SET_DATA_EVENTFD to generate an event when the guest masks
@@ -1291,8 +1294,8 @@ VFIO IRQ set format
 * *index* is the index of IRQ type being setup.
 * *start* is the start of the sub-index being set.
 * *count* describes the number of sub-indexes being set. As a special case, a
-  count of 0 with data flags of VFIO_IRQ_SET_DATA_NONE disables all interrupts
-  of the index.
+  count (and start) of 0, with data flags of VFIO_IRQ_SET_DATA_NONE disables
+  all interrupts of the index.
 * *data* is an optional field included when the
   VFIO_IRQ_SET_DATA_BOOL flag is present. It contains an array of booleans
   that specify whether the action is to be performed on the corresponding
