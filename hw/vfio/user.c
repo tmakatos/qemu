@@ -919,7 +919,7 @@ int vfio_user_dirty_bitmap(VFIOProxy *proxy,
     }
 
     vfio_user_request_msg(&msgp->msg.hdr, VFIO_USER_DIRTY_PAGES, msize, 0);
-    msgp->msg.argsz = cmd->argsz;
+    msgp->msg.argsz = msize - sizeof(msgp->msg.hdr);
     msgp->msg.flags = cmd->flags;
 
     vfio_user_send_recv(proxy, &msgp->msg.hdr, NULL, rsize);
