@@ -1416,7 +1416,7 @@ int vfio_region_mmap(VFIORegion *region)
     fd = region->remfd != -1 ? region->remfd : region->vbasedev->fd;
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        offset = region->remfd != -1 ? region->mmaps[i].offset : region->fd_offset + region->mmaps[i].offset;
+        offset = region->fd_offset + region->mmaps[i].offset;
         region->mmaps[i].mmap = mmap(NULL, region->mmaps[i].size, prot,
                                      MAP_SHARED, fd,
                                      offset);
