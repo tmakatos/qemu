@@ -47,7 +47,6 @@
 #include "hw/audio/pcspk.h"
 #include "hw/input/i8042.h"
 #include "hw/sysbus.h"
-#include "exec/address-spaces.h"
 #include "sysemu/qtest.h"
 #include "sysemu/reset.h"
 #include "qapi/error.h"
@@ -328,8 +327,8 @@ static void mips_jazz_init(MachineState *machine,
     }
 
     /* SCSI adapter */
-    dev = qdev_new(TYPE_ESP);
-    sysbus_esp = ESP(dev);
+    dev = qdev_new(TYPE_SYSBUS_ESP);
+    sysbus_esp = SYSBUS_ESP(dev);
     esp = &sysbus_esp->esp;
     esp->dma_memory_read = rc4030_dma_read;
     esp->dma_memory_write = rc4030_dma_write;

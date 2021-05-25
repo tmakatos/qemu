@@ -26,6 +26,7 @@
 #define TARGET_ARM_INTERNALS_H
 
 #include "hw/registerfields.h"
+#include "tcg/tcg-gvec-desc.h"
 #include "syndrome.h"
 
 /* register banks for CPU modes */
@@ -987,6 +988,9 @@ static inline uint32_t aarch32_cpsr_valid_mask(uint64_t features,
     if (isar_feature_aa32_dit(id)) {
         valid |= CPSR_DIT;
     }
+    if (isar_feature_aa32_ssbs(id)) {
+        valid |= CPSR_SSBS;
+    }
 
     return valid;
 }
@@ -1007,6 +1011,9 @@ static inline uint32_t aarch64_pstate_valid_mask(const ARMISARegisters *id)
     }
     if (isar_feature_aa64_dit(id)) {
         valid |= PSTATE_DIT;
+    }
+    if (isar_feature_aa64_ssbs(id)) {
+        valid |= PSTATE_SSBS;
     }
     if (isar_feature_aa64_mte(id)) {
         valid |= PSTATE_TCO;
@@ -1136,14 +1143,10 @@ FIELD(MTEDESC, MIDX,  0, 4)
 FIELD(MTEDESC, TBI,   4, 2)
 FIELD(MTEDESC, TCMA,  6, 2)
 FIELD(MTEDESC, WRITE, 8, 1)
-FIELD(MTEDESC, ESIZE, 9, 5)
-FIELD(MTEDESC, TSIZE, 14, 10)  /* mte_checkN only */
+FIELD(MTEDESC, SIZEM1, 9, SIMD_DATA_BITS - 9)  /* size - 1 */
 
-bool mte_probe1(CPUARMState *env, uint32_t desc, uint64_t ptr);
-uint64_t mte_check1(CPUARMState *env, uint32_t desc,
-                    uint64_t ptr, uintptr_t ra);
-uint64_t mte_checkN(CPUARMState *env, uint32_t desc,
-                    uint64_t ptr, uintptr_t ra);
+bool mte_probe(CPUARMState *env, uint32_t desc, uint64_t ptr);
+uint64_t mte_check(CPUARMState *env, uint32_t desc, uint64_t ptr, uintptr_t ra);
 
 static inline int allocation_tag_from_addr(uint64_t ptr)
 {

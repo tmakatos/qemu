@@ -26,14 +26,11 @@
 #include "qemu/datadir.h"
 #include "sysemu/sysemu.h"
 #include "cpu.h"
-#include "hw/hw.h"
 #include "hw/boards.h"
-#include "hw/irq.h"
 #include "hw/or-irq.h"
 #include "elf.h"
 #include "hw/loader.h"
 #include "ui/console.h"
-#include "exec/address-spaces.h"
 #include "hw/char/escc.h"
 #include "hw/sysbus.h"
 #include "hw/scsi/esp.h"
@@ -350,8 +347,8 @@ static void q800_init(MachineState *machine)
 
     /* SCSI */
 
-    dev = qdev_new(TYPE_ESP);
-    sysbus_esp = ESP(dev);
+    dev = qdev_new(TYPE_SYSBUS_ESP);
+    sysbus_esp = SYSBUS_ESP(dev);
     esp = &sysbus_esp->esp;
     esp->dma_memory_read = NULL;
     esp->dma_memory_write = NULL;

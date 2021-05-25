@@ -58,7 +58,6 @@
 #include "sysemu/numa.h"
 #include "sysemu/kvm.h"
 #include "sysemu/xen.h"
-#include "sysemu/qtest.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
 #include "kvm/kvm_i386.h"
@@ -66,7 +65,6 @@
 #include "hw/xen/start_info.h"
 #include "ui/qemu-spice.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "sysemu/arch_init.h"
 #include "qemu/bitmap.h"
 #include "qemu/config-file.h"
@@ -75,7 +73,6 @@
 #include "qemu/cutils.h"
 #include "hw/acpi/acpi.h"
 #include "hw/acpi/cpu_hotplug.h"
-#include "hw/boards.h"
 #include "acpi-build.h"
 #include "hw/mem/pc-dimm.h"
 #include "hw/mem/nvdimm.h"
@@ -96,6 +93,9 @@
 #include "fw_cfg.h"
 #include "trace.h"
 #include CONFIG_DEVICES
+
+GlobalProperty pc_compat_6_0[] = {};
+const size_t pc_compat_6_0_len = G_N_ELEMENTS(pc_compat_6_0);
 
 GlobalProperty pc_compat_5_2[] = {
     { "ICH9-LPC", "x-smi-cpu-hotunplug", "off" },
@@ -339,10 +339,8 @@ GlobalProperty pc_compat_1_4[] = {
     PC_CPU_MODEL_IDS("1.4.0")
     { "scsi-hd", "discard_granularity", "0" },
     { "scsi-cd", "discard_granularity", "0" },
-    { "scsi-disk", "discard_granularity", "0" },
     { "ide-hd", "discard_granularity", "0" },
     { "ide-cd", "discard_granularity", "0" },
-    { "ide-drive", "discard_granularity", "0" },
     { "virtio-blk-pci", "discard_granularity", "0" },
     /* DEV_NVECTORS_UNSPECIFIED as a uint32_t string: */
     { "virtio-serial-pci", "vectors", "0xFFFFFFFF" },
@@ -1611,49 +1609,6 @@ static void pc_machine_set_max_fw_size(Object *obj, Visitor *v,
     pcms->max_fw_size = value;
 }
 
-static char *pc_machine_get_oem_id(Object *obj, Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(obj);
-
-    return g_strdup(pcms->oem_id);
-}
-
-static void pc_machine_set_oem_id(Object *obj, const char *value, Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(obj);
-    size_t len = strlen(value);
-
-    if (len > 6) {
-        error_setg(errp,
-          "User specified "PC_MACHINE_OEM_ID" value is bigger than "
-          "6 bytes in size");
-        return;
-    }
-
-    strncpy(pcms->oem_id, value, 6);
-}
-
-static char *pc_machine_get_oem_table_id(Object *obj, Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(obj);
-
-    return g_strdup(pcms->oem_table_id);
-}
-
-static void pc_machine_set_oem_table_id(Object *obj, const char *value,
-                                        Error **errp)
-{
-    PCMachineState *pcms = PC_MACHINE(obj);
-    size_t len = strlen(value);
-
-    if (len > 8) {
-        error_setg(errp,
-          "User specified "PC_MACHINE_OEM_TABLE_ID" value is bigger than "
-          "8 bytes in size");
-        return;
-    }
-    strncpy(pcms->oem_table_id, value, 8);
-}
 
 static void pc_machine_initfn(Object *obj)
 {
@@ -1667,8 +1622,6 @@ static void pc_machine_initfn(Object *obj)
     pcms->max_ram_below_4g = 0; /* use default */
     /* acpi build is enabled by default if machine supports it */
     pcms->acpi_build_enabled = PC_MACHINE_GET_CLASS(pcms)->has_acpi_build;
-    pcms->oem_id = g_strndup(ACPI_BUILD_APPNAME6, 6);
-    pcms->oem_table_id = g_strndup(ACPI_BUILD_APPNAME8, 8);
     pcms->smbus_enabled = true;
     pcms->sata_enabled = true;
     pcms->pit_enabled = true;
@@ -1805,24 +1758,6 @@ static void pc_machine_class_init(ObjectClass *oc, void *data)
         NULL, NULL);
     object_class_property_set_description(oc, PC_MACHINE_MAX_FW_SIZE,
         "Maximum combined firmware size");
-
-    object_class_property_add_str(oc, PC_MACHINE_OEM_ID,
-                                  pc_machine_get_oem_id,
-                                  pc_machine_set_oem_id);
-    object_class_property_set_description(oc, PC_MACHINE_OEM_ID,
-                                          "Override the default value of field OEMID "
-                                          "in ACPI table header."
-                                          "The string may be up to 6 bytes in size");
-
-
-    object_class_property_add_str(oc, PC_MACHINE_OEM_TABLE_ID,
-                                  pc_machine_get_oem_table_id,
-                                  pc_machine_set_oem_table_id);
-    object_class_property_set_description(oc, PC_MACHINE_OEM_TABLE_ID,
-                                          "Override the default value of field OEM Table ID "
-                                          "in ACPI table header."
-                                          "The string may be up to 8 bytes in size");
-
 }
 
 static const TypeInfo pc_machine_info = {

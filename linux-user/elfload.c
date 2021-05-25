@@ -586,6 +586,16 @@ enum {
     ARM_HWCAP2_A64_SVESM4       = 1 << 6,
     ARM_HWCAP2_A64_FLAGM2       = 1 << 7,
     ARM_HWCAP2_A64_FRINT        = 1 << 8,
+    ARM_HWCAP2_A64_SVEI8MM      = 1 << 9,
+    ARM_HWCAP2_A64_SVEF32MM     = 1 << 10,
+    ARM_HWCAP2_A64_SVEF64MM     = 1 << 11,
+    ARM_HWCAP2_A64_SVEBF16      = 1 << 12,
+    ARM_HWCAP2_A64_I8MM         = 1 << 13,
+    ARM_HWCAP2_A64_BF16         = 1 << 14,
+    ARM_HWCAP2_A64_DGH          = 1 << 15,
+    ARM_HWCAP2_A64_RNG          = 1 << 16,
+    ARM_HWCAP2_A64_BTI          = 1 << 17,
+    ARM_HWCAP2_A64_MTE          = 1 << 18,
 };
 
 #define ELF_HWCAP   get_elf_hwcap()
@@ -640,6 +650,9 @@ static uint32_t get_elf_hwcap2(void)
     GET_FEATURE_ID(aa64_dcpodp, ARM_HWCAP2_A64_DCPODP);
     GET_FEATURE_ID(aa64_condm_5, ARM_HWCAP2_A64_FLAGM2);
     GET_FEATURE_ID(aa64_frint, ARM_HWCAP2_A64_FRINT);
+    GET_FEATURE_ID(aa64_rndr, ARM_HWCAP2_A64_RNG);
+    GET_FEATURE_ID(aa64_bti, ARM_HWCAP2_A64_BTI);
+    GET_FEATURE_ID(aa64_mte, ARM_HWCAP2_A64_MTE);
 
     return hwcaps;
 }
@@ -1386,29 +1399,6 @@ static inline void init_thread(struct target_pt_regs *regs, struct image_info *i
 }
 
 #endif /* TARGET_S390X */
-
-#ifdef TARGET_TILEGX
-
-/* 42 bits real used address, a half for user mode */
-#define ELF_START_MMAP (0x00000020000000000ULL)
-
-#define elf_check_arch(x) ((x) == EM_TILEGX)
-
-#define ELF_CLASS   ELFCLASS64
-#define ELF_DATA    ELFDATA2LSB
-#define ELF_ARCH    EM_TILEGX
-
-static inline void init_thread(struct target_pt_regs *regs,
-                               struct image_info *infop)
-{
-    regs->pc = infop->entry;
-    regs->sp = infop->start_stack;
-
-}
-
-#define ELF_EXEC_PAGESIZE        65536 /* TILE-Gx page size is 64KB */
-
-#endif /* TARGET_TILEGX */
 
 #ifdef TARGET_RISCV
 
@@ -2232,9 +2222,8 @@ static uintptr_t pgd_find_hole_fallback(uintptr_t guest_size, uintptr_t brk,
             void * mmap_start = mmap((void *) align_start, guest_size,
                                      PROT_NONE, flags, -1, 0);
             if (mmap_start != MAP_FAILED) {
-                munmap((void *) align_start, guest_size);
-                if (MAP_FIXED_NOREPLACE != 0 ||
-                    mmap_start == (void *) align_start) {
+                munmap(mmap_start, guest_size);
+                if (mmap_start == (void *) align_start) {
                     return (uintptr_t) mmap_start + offset;
                 }
             }
@@ -2259,7 +2248,8 @@ static uintptr_t pgb_find_hole(uintptr_t guest_loaddr, uintptr_t guest_size,
     brk = (uintptr_t)sbrk(0);
 
     if (!maps) {
-        return pgd_find_hole_fallback(guest_size, brk, align, offset);
+        ret = pgd_find_hole_fallback(guest_size, brk, align, offset);
+        return ret == -1 ? -1 : ret - guest_loaddr;
     }
 
     /* The first hole is before the first map entry. */

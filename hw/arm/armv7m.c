@@ -10,17 +10,14 @@
 #include "qemu/osdep.h"
 #include "hw/arm/armv7m.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
 #include "elf.h"
-#include "sysemu/qtest.h"
 #include "sysemu/reset.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "exec/address-spaces.h"
 #include "target/arm/idau.h"
 
 /* Bitbanded IO.  Each word corresponds to a single bit.  */

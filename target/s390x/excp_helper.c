@@ -29,7 +29,6 @@
 #include "exec/address-spaces.h"
 #include "tcg_s390x.h"
 #ifndef CONFIG_USER_ONLY
-#include "sysemu/sysemu.h"
 #include "hw/s390x/s390_flic.h"
 #include "hw/boards.h"
 #endif
@@ -163,6 +162,9 @@ bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         excp = PGM_ADDRESSING;
         tec = 0; /* unused */
     }
+
+    env->tlb_fill_exc = excp;
+    env->tlb_fill_tec = tec;
 
     if (!excp) {
         qemu_log_mask(CPU_LOG_MMU,

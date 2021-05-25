@@ -37,6 +37,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/timer.h"
+#include "qemu-version.h"
+#include "qemu-common.h"
 #include "fuse_virtio.h"
 #include "fuse_log.h"
 #include "fuse_lowlevel.h"
@@ -148,6 +150,7 @@ struct lo_data {
     int posix_lock;
     int xattr;
     char *xattrmap;
+    char *xattr_security_capability;
     char *source;
     char *modcaps;
     double timeout;
@@ -217,21 +220,28 @@ static __thread bool cap_loaded = 0;
 
 static struct lo_inode *lo_find(struct lo_data *lo, struct stat *st,
                                 uint64_t mnt_id);
+static int xattr_map_client(const struct lo_data *lo, const char *client_name,
+                            char **out_name);
 
-static int is_dot_or_dotdot(const char *name)
+static bool is_dot_or_dotdot(const char *name)
 {
     return name[0] == '.' &&
            (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'));
 }
 
 /* Is `path` a single path component that is not "." or ".."? */
-static int is_safe_path_component(const char *path)
+static bool is_safe_path_component(const char *path)
 {
     if (strchr(path, '/')) {
-        return 0;
+        return false;
     }
 
     return !is_dot_or_dotdot(path);
+}
+
+static bool is_empty(const char *name)
+{
+    return name[0] == '\0';
 }
 
 static struct lo_data *lo_data(fuse_req_t req)
@@ -356,6 +366,37 @@ out:
     return ret;
 }
 
+/*
+ * The host kernel normally drops security.capability xattr's on
+ * any write, however if we're remapping xattr names we need to drop
+ * whatever the clients security.capability is actually stored as.
+ */
+static int drop_security_capability(const struct lo_data *lo, int fd)
+{
+    if (!lo->xattr_security_capability) {
+        /* We didn't remap the name, let the host kernel do it */
+        return 0;
+    }
+    if (!fremovexattr(fd, lo->xattr_security_capability)) {
+        /* All good */
+        return 0;
+    }
+
+    switch (errno) {
+    case ENODATA:
+        /* Attribute didn't exist, that's fine */
+        return 0;
+
+    case ENOTSUP:
+        /* FS didn't support attribute anyway, also fine */
+        return 0;
+
+    default:
+        /* Hmm other error */
+        return errno;
+    }
+}
+
 static void lo_map_init(struct lo_map *map)
 {
     map->elems = NULL;
@@ -365,7 +406,7 @@ static void lo_map_init(struct lo_map *map)
 
 static void lo_map_destroy(struct lo_map *map)
 {
-    free(map->elems);
+    g_free(map->elems);
 }
 
 static int lo_map_grow(struct lo_map *map, size_t new_nelems)
@@ -377,7 +418,7 @@ static int lo_map_grow(struct lo_map *map, size_t new_nelems)
         return 1;
     }
 
-    new_elems = realloc(map->elems, sizeof(map->elems[0]) * new_nelems);
+    new_elems = g_try_realloc_n(map->elems, new_nelems, sizeof(map->elems[0]));
     if (!new_elems) {
         return 0;
     }
@@ -737,6 +778,11 @@ static void lo_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         uid_t uid = (valid & FUSE_SET_ATTR_UID) ? attr->st_uid : (uid_t)-1;
         gid_t gid = (valid & FUSE_SET_ATTR_GID) ? attr->st_gid : (gid_t)-1;
 
+        saverr = drop_security_capability(lo, ifd);
+        if (saverr) {
+            goto out_err;
+        }
+
         res = fchownat(ifd, "", uid, gid, AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW);
         if (res == -1) {
             saverr = errno;
@@ -757,6 +803,14 @@ static void lo_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
                 saverr = -truncfd;
                 goto out_err;
             }
+        }
+
+        saverr = drop_security_capability(lo, truncfd);
+        if (saverr) {
+            if (!fi) {
+                close(truncfd);
+            }
+            goto out_err;
         }
 
         if (kill_suidgid) {
@@ -1036,6 +1090,11 @@ static void lo_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
     fuse_log(FUSE_LOG_DEBUG, "lo_lookup(parent=%" PRIu64 ", name=%s)\n", parent,
              name);
 
+    if (is_empty(name)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
+
     /*
      * Don't use is_safe_path_component(), allow "." and ".." for NFS export
      * support.
@@ -1127,6 +1186,11 @@ static void lo_mknod_symlink(fuse_req_t req, fuse_ino_t parent,
     struct fuse_entry_param e;
     struct lo_cred old = {};
 
+    if (is_empty(name)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
+
     if (!is_safe_path_component(name)) {
         fuse_reply_err(req, EINVAL);
         return;
@@ -1199,6 +1263,11 @@ static void lo_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t parent,
     char procname[64];
     int saverr;
 
+    if (is_empty(name)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
+
     if (!is_safe_path_component(name)) {
         fuse_reply_err(req, EINVAL);
         return;
@@ -1261,8 +1330,7 @@ static struct lo_inode *lookup_name(fuse_req_t req, fuse_ino_t parent,
         return NULL;
     }
 
-    res = do_statx(lo, dir->fd, name, &attr,
-                   AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW, &mnt_id);
+    res = do_statx(lo, dir->fd, name, &attr, AT_SYMLINK_NOFOLLOW, &mnt_id);
     lo_inode_put(lo, &dir);
     if (res == -1) {
         return NULL;
@@ -1276,6 +1344,11 @@ static void lo_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name)
     int res;
     struct lo_inode *inode;
     struct lo_data *lo = lo_data(req);
+
+    if (is_empty(name)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
 
     if (!is_safe_path_component(name)) {
         fuse_reply_err(req, EINVAL);
@@ -1305,6 +1378,11 @@ static void lo_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
     struct lo_inode *oldinode = NULL;
     struct lo_inode *newinode = NULL;
     struct lo_data *lo = lo_data(req);
+
+    if (is_empty(name) || is_empty(newname)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
 
     if (!is_safe_path_component(name) || !is_safe_path_component(newname)) {
         fuse_reply_err(req, EINVAL);
@@ -1358,6 +1436,11 @@ static void lo_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
     int res;
     struct lo_inode *inode;
     struct lo_data *lo = lo_data(req);
+
+    if (is_empty(name)) {
+        fuse_reply_err(req, ENOENT);
+        return;
+    }
 
     if (!is_safe_path_component(name)) {
         fuse_reply_err(req, EINVAL);
@@ -1570,7 +1653,7 @@ static void lo_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
     struct lo_data *lo = lo_data(req);
     struct lo_dirp *d = NULL;
     struct lo_inode *dinode;
-    char *buf = NULL;
+    g_autofree char *buf = NULL;
     char *p;
     size_t rem = size;
     int err = EBADF;
@@ -1586,7 +1669,7 @@ static void lo_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
     }
 
     err = ENOMEM;
-    buf = calloc(1, size);
+    buf = g_try_malloc0(size);
     if (!buf) {
         goto error;
     }
@@ -1672,7 +1755,6 @@ error:
     } else {
         fuse_reply_buf(req, buf, size - rem);
     }
-    free(buf);
 }
 
 static void lo_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
@@ -1783,6 +1865,13 @@ static int lo_do_open(struct lo_data *lo, struct lo_inode *inode,
         }
         if (fd < 0) {
             return -fd;
+        }
+        if (fi->flags & (O_TRUNC)) {
+            int err = drop_security_capability(lo, fd);
+            if (err) {
+                close(fd);
+                return err;
+            }
         }
     }
 
@@ -1921,10 +2010,10 @@ static void lo_getlk(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_getlk(ino=%" PRIu64 ", flags=%d)"
-             " owner=0x%lx, l_type=%d l_start=0x%lx"
-             " l_len=0x%lx\n",
-             ino, fi->flags, fi->lock_owner, lock->l_type, lock->l_start,
-             lock->l_len);
+             " owner=0x%" PRIx64 ", l_type=%d l_start=0x%" PRIx64
+             " l_len=0x%" PRIx64 "\n",
+             ino, fi->flags, fi->lock_owner, lock->l_type,
+             (uint64_t)lock->l_start, (uint64_t)lock->l_len);
 
     if (!lo->posix_lock) {
         fuse_reply_err(req, ENOSYS);
@@ -1971,10 +2060,10 @@ static void lo_setlk(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_setlk(ino=%" PRIu64 ", flags=%d)"
-             " cmd=%d pid=%d owner=0x%lx sleep=%d l_whence=%d"
-             " l_start=0x%lx l_len=0x%lx\n",
+             " cmd=%d pid=%d owner=0x%" PRIx64 " sleep=%d l_whence=%d"
+             " l_start=0x%" PRIx64 " l_len=0x%" PRIx64 "\n",
              ino, fi->flags, lock->l_type, lock->l_pid, fi->lock_owner, sleep,
-             lock->l_whence, lock->l_start, lock->l_len);
+             lock->l_whence, (uint64_t)lock->l_start, (uint64_t)lock->l_len);
 
     if (!lo->posix_lock) {
         fuse_reply_err(req, ENOSYS);
@@ -2190,6 +2279,12 @@ static void lo_write_buf(fuse_req_t req, fuse_ino_t ino,
     fuse_log(FUSE_LOG_DEBUG,
              "lo_write_buf(ino=%" PRIu64 ", size=%zd, off=%lu kill_priv=%d)\n",
              ino, out_buf.buf[0].size, (unsigned long)off, fi->kill_priv);
+
+    res = drop_security_capability(lo_data(req), out_buf.buf[0].fd);
+    if (res) {
+        fuse_reply_err(req, res);
+        return;
+    }
 
     /*
      * If kill_priv is set, drop CAP_FSETID which should lead to kernel
@@ -2432,6 +2527,7 @@ static void parse_xattrmap(struct lo_data *lo)
 {
     const char *map = lo->xattrmap;
     const char *tmp;
+    int ret;
 
     lo->xattr_map_nentries = 0;
     while (*map) {
@@ -2462,7 +2558,7 @@ static void parse_xattrmap(struct lo_data *lo)
              * the last entry.
              */
             parse_xattrmap_map(lo, map, sep);
-            return;
+            break;
         } else {
             fuse_log(FUSE_LOG_ERR,
                      "%s: Unexpected type;"
@@ -2530,6 +2626,20 @@ static void parse_xattrmap(struct lo_data *lo)
     if (!lo->xattr_map_nentries) {
         fuse_log(FUSE_LOG_ERR, "Empty xattr map\n");
         exit(1);
+    }
+
+    ret = xattr_map_client(lo, "security.capability",
+                           &lo->xattr_security_capability);
+    if (ret) {
+        fuse_log(FUSE_LOG_ERR, "Failed to map security.capability: %s\n",
+                strerror(ret));
+        exit(1);
+    }
+    if (!lo->xattr_security_capability ||
+        !strcmp(lo->xattr_security_capability, "security.capability")) {
+        /* 1-1 mapping, don't need to do anything */
+        free(lo->xattr_security_capability);
+        lo->xattr_security_capability = NULL;
     }
 }
 
@@ -2612,11 +2722,16 @@ static int xattr_map_server(const struct lo_data *lo, const char *server_name,
     return -ENODATA;
 }
 
+#define FCHDIR_NOFAIL(fd) do {                         \
+        int fchdir_res = fchdir(fd);                   \
+        assert(fchdir_res == 0);                       \
+    } while (0)
+
 static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
                         size_t size)
 {
     struct lo_data *lo = lo_data(req);
-    char *value = NULL;
+    g_autofree char *value = NULL;
     char procname[64];
     const char *name;
     char *mapped_name;
@@ -2657,7 +2772,7 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
              ino, name, size);
 
     if (size) {
-        value = malloc(size);
+        value = g_try_malloc(size);
         if (!value) {
             goto out_err;
         }
@@ -2678,9 +2793,9 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
         ret = fgetxattr(fd, name, value, size);
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = getxattr(procname, name, value, size);
-        assert(fchdir(lo->root.fd) == 0);
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     if (ret == -1) {
@@ -2696,8 +2811,6 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
         fuse_reply_xattr(req, ret);
     }
 out_free:
-    free(value);
-
     if (fd >= 0) {
         close(fd);
     }
@@ -2716,7 +2829,7 @@ out:
 static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
 {
     struct lo_data *lo = lo_data(req);
-    char *value = NULL;
+    g_autofree char *value = NULL;
     char procname[64];
     struct lo_inode *inode;
     ssize_t ret;
@@ -2738,7 +2851,7 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
              size);
 
     if (size) {
-        value = malloc(size);
+        value = g_try_malloc(size);
         if (!value) {
             goto out_err;
         }
@@ -2753,9 +2866,9 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
         ret = flistxattr(fd, value, size);
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = listxattr(procname, value, size);
-        assert(fchdir(lo->root.fd) == 0);
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     if (ret == -1) {
@@ -2823,8 +2936,6 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
         fuse_reply_xattr(req, ret);
     }
 out_free:
-    free(value);
-
     if (fd >= 0) {
         close(fd);
     }
@@ -2889,9 +3000,9 @@ static void lo_setxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
         ret = fsetxattr(fd, name, value, size, flags);
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = setxattr(procname, name, value, size, flags);
-        assert(fchdir(lo->root.fd) == 0);
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     saverr = ret == -1 ? errno : 0;
@@ -2955,9 +3066,9 @@ static void lo_removexattr(fuse_req_t req, fuse_ino_t ino, const char *in_name)
         ret = fremovexattr(fd, name);
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = removexattr(procname, name);
-        assert(fchdir(lo->root.fd) == 0);
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     saverr = ret == -1 ? errno : 0;
@@ -2986,9 +3097,10 @@ static void lo_copy_file_range(fuse_req_t req, fuse_ino_t ino_in, off_t off_in,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_copy_file_range(ino=%" PRIu64 "/fd=%d, "
-             "off=%lu, ino=%" PRIu64 "/fd=%d, "
-             "off=%lu, size=%zd, flags=0x%x)\n",
-             ino_in, in_fd, off_in, ino_out, out_fd, off_out, len, flags);
+             "off=%ju, ino=%" PRIu64 "/fd=%d, "
+             "off=%ju, size=%zd, flags=0x%x)\n",
+             ino_in, in_fd, (intmax_t)off_in,
+             ino_out, out_fd, (intmax_t)off_out, len, flags);
 
     res = copy_file_range(in_fd, &off_in, out_fd, &off_out, len, flags);
     if (res < 0) {
@@ -3588,7 +3700,13 @@ static void fuse_lo_data_cleanup(struct lo_data *lo)
 
     free(lo->xattrmap);
     free_xattrmap(lo);
+    free(lo->xattr_security_capability);
     free(lo->source);
+}
+
+static void qemu_version(void)
+{
+    printf("virtiofsd version " QEMU_FULL_VERSION "\n" QEMU_COPYRIGHT "\n");
 }
 
 int main(int argc, char *argv[])
@@ -3662,6 +3780,7 @@ int main(int argc, char *argv[])
         ret = 0;
         goto err_out1;
     } else if (opts.show_version) {
+        qemu_version();
         fuse_lowlevel_version();
         ret = 0;
         goto err_out1;
@@ -3708,6 +3827,7 @@ int main(int argc, char *argv[])
     }
 
     if (lo.xattrmap) {
+        lo.xattr = 1;
         parse_xattrmap(&lo);
     }
 

@@ -46,8 +46,6 @@ typedef struct PCMachineState {
     bool pit_enabled;
     bool hpet_enabled;
     uint64_t max_fw_size;
-    char *oem_id;
-    char *oem_table_id;
 
     /* NUMA information: */
     uint64_t numa_nodes;
@@ -65,8 +63,6 @@ typedef struct PCMachineState {
 #define PC_MACHINE_SATA             "sata"
 #define PC_MACHINE_PIT              "pit"
 #define PC_MACHINE_MAX_FW_SIZE      "max-fw-size"
-#define PC_MACHINE_OEM_ID           "oem-id"
-#define PC_MACHINE_OEM_TABLE_ID     "oem-table-id"
 /**
  * PCMachineClass:
  *
@@ -105,6 +101,7 @@ struct PCMachineClass {
     int legacy_acpi_table_size;
     unsigned acpi_data_size;
     bool do_not_add_smb_acpi;
+    int pci_root_uid;
 
     /* SMBIOS compat: */
     bool smbios_defaults;
@@ -199,6 +196,9 @@ bool pc_system_ovmf_table_find(const char *entry, uint8_t **data,
 /* acpi-build.c */
 void pc_madt_cpu_entry(AcpiDeviceIf *adev, int uid,
                        const CPUArchIdList *apic_ids, GArray *entry);
+
+extern GlobalProperty pc_compat_6_0[];
+extern const size_t pc_compat_6_0_len;
 
 extern GlobalProperty pc_compat_5_2[];
 extern const size_t pc_compat_5_2_len;

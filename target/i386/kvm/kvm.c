@@ -22,6 +22,7 @@
 #include "standard-headers/asm-x86/kvm_para.h"
 
 #include "cpu.h"
+#include "host-cpu.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/hw_accel.h"
 #include "sysemu/kvm_int.h"
@@ -288,7 +289,7 @@ static bool host_tsx_broken(void)
     int family, model, stepping;\
     char vendor[CPUID_VENDOR_SZ + 1];
 
-    host_vendor_fms(vendor, &family, &model, &stepping);
+    host_cpu_vendor_fms(vendor, &family, &model, &stepping);
 
     /* Check if we are running on a Haswell host known to have broken TSX */
     return !strcmp(vendor, CPUID_VENDOR_INTEL) &&
@@ -693,7 +694,7 @@ static int kvm_inject_mce_oldstyle(X86CPU *cpu)
     return 0;
 }
 
-static void cpu_update_state(void *opaque, int running, RunState state)
+static void cpu_update_state(void *opaque, bool running, RunState state)
 {
     CPUX86State *env = opaque;
 
@@ -4352,8 +4353,13 @@ int kvm_arch_remove_sw_breakpoint(CPUState *cs, struct kvm_sw_breakpoint *bp)
 {
     uint8_t int3;
 
-    if (cpu_memory_rw_debug(cs, bp->pc, &int3, 1, 0) || int3 != 0xcc ||
-        cpu_memory_rw_debug(cs, bp->pc, (uint8_t *)&bp->saved_insn, 1, 1)) {
+    if (cpu_memory_rw_debug(cs, bp->pc, &int3, 1, 0)) {
+        return -EINVAL;
+    }
+    if (int3 != 0xcc) {
+        return 0;
+    }
+    if (cpu_memory_rw_debug(cs, bp->pc, (uint8_t *)&bp->saved_insn, 1, 1)) {
         return -EINVAL;
     }
     return 0;
