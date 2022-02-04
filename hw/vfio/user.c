@@ -302,10 +302,14 @@ static int vfio_user_recv_one(VFIOProxy *proxy)
     msgleft = hdr.size - sizeof(hdr);
     while (msgleft > 0) {
         ret = qio_channel_read(proxy->ioc, data, msgleft, &local_err);
-
         /* error or would block */
-        if (ret <= 0) {
+        if (ret == QIO_CHANNEL_ERR_BLOCK) {
+            continue;
+        } else if (ret == -1) {
+            assert(local_err != NULL);
             goto fatal;
+        } else {
+            assert(ret > 0);
         }
 
         msgleft -= ret;
