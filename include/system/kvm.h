@@ -41,6 +41,7 @@ extern bool kvm_msi_via_irqfd_allowed;
 extern bool kvm_gsi_routing_allowed;
 extern bool kvm_gsi_direct_mapping;
 extern bool kvm_readonly_mem_allowed;
+extern bool kvm_shadow_ioeventfd_allowed;
 extern bool kvm_msi_use_devid;
 extern bool kvm_pre_fault_memory_supported;
 
@@ -579,4 +580,7 @@ int kvm_set_memory_attributes_shared(hwaddr start, uint64_t size);
 
 int kvm_convert_memory(hwaddr start, hwaddr size, bool to_private);
 
+int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
+                           bool assign, uint32_t size, bool datamatch,
+                           void *vaddr);
 #endif

@@ -18,3 +18,7 @@ vfio_user_wrmulti(const char *s, uint64_t wr_cnt) " %s count 0x%"PRIx64
 # container.c
 vfio_user_dma_map(uint64_t iova, uint64_t size, uint64_t off, uint32_t flags, bool async_ops) " iova 0x%"PRIx64" size 0x%"PRIx64" off 0x%"PRIx64" flags 0x%x async_ops %d"
 vfio_user_dma_unmap(uint64_t iova, uint64_t size, uint32_t flags,  bool async_ops) " iova 0x%"PRIx64" size 0x%"PRIx64" flags 0x%x async_ops %d"
+
+# device.c
+vfio_user_get_region_io_fds_none(const char *name, uint32_t index) " (%s) index %d"
+vfio_user_get_region_io_fds_count(const char *name, uint32_t index, uint32_t count, uint32_t nr_fds) " (%s) index %d count %u nr_fds %u"

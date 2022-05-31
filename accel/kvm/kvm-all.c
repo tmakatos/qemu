@@ -99,6 +99,7 @@ bool kvm_gsi_direct_mapping;
 bool kvm_allowed;
 bool kvm_readonly_mem_allowed;
 bool kvm_vm_attributes_allowed;
+bool kvm_shadow_ioeventfd_allowed;
 bool kvm_msi_use_devid;
 bool kvm_pre_fault_memory_supported;
 static bool kvm_has_guest_debug;
@@ -1385,8 +1386,9 @@ static uint32_t adjust_ioeventfd_endianness(uint32_t val, uint32_t size)
     return val;
 }
 
-static int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
-                                  bool assign, uint32_t size, bool datamatch)
+int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
+                           bool assign, uint32_t size, bool datamatch,
+                           void *vaddr)
 {
     int ret;
     struct kvm_ioeventfd iofd = {
@@ -1395,6 +1397,7 @@ static int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
         .len = size,
         .flags = 0,
         .fd = fd,
+        .vaddr = (__u64)vaddr,
     };
 
     trace_kvm_set_ioeventfd_mmio(fd, (uint64_t)addr, val, assign, size,
@@ -1408,6 +1411,9 @@ static int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
     }
     if (!assign) {
         iofd.flags |= KVM_IOEVENTFD_FLAG_DEASSIGN;
+    }
+    if (vaddr != NULL) {
+        iofd.flags |= KVM_IOEVENTFD_FLAG_COMMIT_WRITE;
     }
 
     ret = kvm_vm_ioctl(kvm_state, KVM_IOEVENTFD, &iofd);
@@ -1892,7 +1898,7 @@ static void kvm_mem_ioeventfd_add(MemoryListener *listener,
 
     r = kvm_set_ioeventfd_mmio(fd, section->offset_within_address_space,
                                data, true, int128_get64(section->size),
-                               match_data);
+                               match_data, NULL);
     if (r < 0) {
         fprintf(stderr, "%s: error adding ioeventfd: %s (%d)\n",
                 __func__, strerror(-r), -r);
@@ -1910,7 +1916,7 @@ static void kvm_mem_ioeventfd_del(MemoryListener *listener,
 
     r = kvm_set_ioeventfd_mmio(fd, section->offset_within_address_space,
                                data, false, int128_get64(section->size),
-                               match_data);
+                               match_data, NULL);
     if (r < 0) {
         fprintf(stderr, "%s: error deleting ioeventfd: %s (%d)\n",
                 __func__, strerror(-r), -r);
@@ -2766,6 +2772,9 @@ static int kvm_init(AccelState *as, MachineState *ms)
         }
 #endif
     }
+
+    kvm_shadow_ioeventfd_allowed =
+        (kvm_check_extension(s, KVM_CAP_SHADOW_IOEVENTFD) > 0);
 
     kvm_state = s;
 

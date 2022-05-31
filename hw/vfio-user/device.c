@@ -127,6 +127,79 @@ static int vfio_user_get_region_info(VFIOUserProxy *proxy,
     return 0;
 }
 
+static int vfio_user_get_region_io_fds(VFIODevice *vbasedev, int index)
+{
+    g_autofree VFIOUserRegionIOFDs *msgp = NULL;
+    uint32_t size;
+    int _fds[VFIO_USER_DEF_MAX_FDS];
+    VFIOUserFDs fds = { 0, ARRAY_SIZE(_fds), _fds };
+    int i;
+    struct bar_ioeventfd *b;
+    Error *local_err = NULL;
+
+
+    /* 1. get size */
+    size = sizeof(VFIOUserRegionIOFDs);
+    msgp = g_malloc0(size);
+    vfio_user_request_msg(&msgp->hdr, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          sizeof(*msgp), 0);
+    msgp->argsz = size;
+    msgp->index = index;
+    vfio_user_send_wait(vbasedev->proxy, &msgp->hdr, NULL, size, &local_err);
+    if (msgp->hdr.flags & VFIO_USER_ERROR) {
+        error_prepend(&local_err, "%s: ", __func__);
+        error_report_err(local_err);
+        return -msgp->hdr.error_reply;
+    }
+
+    if (!msgp->count) {
+        trace_vfio_user_get_region_io_fds_none(vbasedev->name, index);
+        return 0;
+    }
+
+    /* 2. get actual I/O region FDs */
+    size = msgp->argsz + sizeof(VFIOUserRegionIOFDs);
+    g_free(msgp);
+    msgp = g_malloc0(size);
+    vfio_user_request_msg(&msgp->hdr, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          sizeof(*msgp), 0);
+    msgp->argsz = size;
+    msgp->index = index;
+    vfio_user_send_wait(vbasedev->proxy, &msgp->hdr, &fds, size, &local_err);
+    if (msgp->hdr.flags & VFIO_USER_ERROR) {
+        error_prepend(&local_err, "%s: ", __func__);
+        error_report_err(local_err);
+        return -msgp->hdr.error_reply;
+    }
+
+    if (msgp->count < 1) {
+        for (i = 0; i < fds.recv_fds; i++) {
+            close(_fds[i]);
+        }
+        trace_vfio_user_get_region_io_fds_none(vbasedev->name, index);
+        return 0;
+    }
+    b = &vbasedev->bar_ioeventfds[index];
+    b->count = msgp->count;
+    b->vaddr = g_malloc0(b->count * sizeof(void *));
+    for (i = 0; i < b->count; i++) {
+        b->vaddr[i] = MAP_FAILED;
+    }
+    size = msgp->count * sizeof(*b->regions);
+    b->regions = g_malloc0(size);
+    memcpy(b->regions,
+           (vfio_user_sub_region_ioeventfd_t *)(msgp + 1),
+           size);
+
+    b->nr_fds = fds.recv_fds;
+    size = b->nr_fds * sizeof(int);
+    b->fds = g_malloc0(size);
+    memcpy(b->fds, _fds, size);
+    trace_vfio_user_get_region_io_fds_count(vbasedev->name, index, b->count,
+                                            b->nr_fds);
+    return 0;
+}
+
 static int vfio_user_device_io_get_region_info(VFIODevice *vbasedev,
                                                struct vfio_region_info *info,
                                                int *fd)
@@ -147,6 +220,13 @@ static int vfio_user_device_io_get_region_info(VFIODevice *vbasedev,
     if ((info->flags & VFIO_REGION_INFO_FLAG_CAPS) &&
         (info->cap_offset < sizeof(*info) || info->cap_offset > info->argsz)) {
         return -EINVAL;
+    }
+
+    if (info->size > 0) {
+        ret = vfio_user_get_region_io_fds(vbasedev, info->index);
+        if (ret) {
+            return ret;
+        }
     }
 
     return 0;

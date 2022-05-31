@@ -1405,6 +1405,129 @@ uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
     return val;
 }
 
+/*
+ * Tears down shadow ioeventfds of this BAR.
+ */
+static void teardown_bar_shadow_ioeventfds(struct bar_ioeventfd *b)
+{
+    for (int i = 0; i < b->count; i++) {
+        if (b->vaddr[i] == MAP_FAILED) {
+            continue;
+        }
+        vfio_user_sub_region_ioeventfd_t *r = &b->regions[i];
+        uint64_t gpa = b->addr + r->gpa_offset;
+        uint32_t size = r->size;
+        int eventfd = b->fds[r->fd_index];
+        int ret = kvm_set_ioeventfd_mmio(eventfd, gpa, 0, false, size, false,
+                                         NULL);
+        if (ret != 0) {
+            if (ret != -ENOENT) {
+                warn_report("failed to tear down shadow ioeventfd %" PRIx64 "-%" PRIx64 ": %s\n",
+                            gpa, gpa + size, strerror(-ret));
+                continue;
+            }
+        } else {
+            trace_vfio_user_teardown_shadow_ioeventfd(gpa, gpa + size);
+        }
+        if (munmap(b->vaddr[i], size) != 0) {
+            warn_report("failed to munmap %" PRIx64 "-%" PRIx64 ": %m\n",
+                        (uint64_t)b->vaddr[i], (uint64_t)b->vaddr[i] + size);
+        } else {
+            b->vaddr[i] = MAP_FAILED;
+        }
+    }
+}
+
+/*
+ * Sets ups shadow ioeventfds. Returns 0 on success, -errno on failure.
+ */
+static int configure_shadow_ioeventfds(struct bar_ioeventfd *b,
+                                       uint32_t bar_addr)
+{
+    int ret = 0;
+
+    if (b->count == 0) {
+        return 0;
+    }
+    if (bar_addr & PCI_BASE_ADDRESS_SPACE_IO) {
+        /* KVM doesn't seem to trigger the eventfd. */
+        warn_report("shadow ioeventfd not supported for I/O BARs\n");
+        return -EOPNOTSUPP;
+    }
+    if (bar_addr & PCI_BASE_ADDRESS_MEM_TYPE_64) {
+        /* TODO should be trivially fixed */
+        warn_report("64-bit BARs not supported\n");
+        return -EOPNOTSUPP;
+    }
+    if (!kvm_shadow_ioeventfd_allowed) {
+        warn_report("KVM does not support shadow ioeventfd");
+        return -EOPNOTSUPP;
+    }
+    if (b->addr != 0) { /* already configured */
+        if (bar_addr == b->addr) { /* same address, no need to reconfigure */
+            return 0;
+        }
+        /* different address, need to reconfigure */
+        teardown_bar_shadow_ioeventfds(b);
+    }
+    b->addr = bar_addr;
+    for (int i = 0; i < b->count; i++) {
+        /*
+         * Previous tear down failed, skip this shadow ioeventfd.
+         */
+        if (b->vaddr[i] != MAP_FAILED) {
+            continue;
+        }
+        vfio_user_sub_region_ioeventfd_t *r = &b->regions[i];
+        uint64_t gpa = bar_addr + r->gpa_offset;
+        uint32_t size = r->size;
+        int shadow_mem_fd = b->fds[r->shadow_mem_fd_index];
+        /*
+         * shadow offset might not be page aligned so instead of mapping
+         * [shadow_offset, size) we map [0, shadow_offset + size).
+         */
+        b->vaddr[i] = mmap(NULL, r->shadow_offset + size,
+                           PROT_READ | PROT_WRITE, MAP_SHARED, shadow_mem_fd,
+                           0);
+        if (b->vaddr[i] == MAP_FAILED) {
+            ret = -errno;
+            warn_report("failed to mmap shadow mem fd %d at %" PRIx64 "-%" PRIx64 "\n",
+                        shadow_mem_fd, (uint64_t)0, (uint64_t)size + r->shadow_offset);
+            continue;
+        }
+        int eventfd = b->fds[r->fd_index];
+        void *_vaddr = b->vaddr[i] + r->shadow_offset;
+        ret = kvm_set_ioeventfd_mmio(eventfd, gpa, 0, true, size, false,
+                                     _vaddr);
+        if (ret != 0) {
+            warn_report("failed to set up shadow ioeventfd from GPA %" PRIx64 \
+                        "-%" PRIx64 " to VA %" PRIx64 "-%" PRIx64 ": %s\n",
+                        gpa, gpa + size, (uint64_t)_vaddr,
+                        (uint64_t)_vaddr + size, strerror(-ret));
+            if (munmap(b->vaddr[i], size) == -1) {
+                warn_report("failed to munmap %" PRIx64 "-%" PRIx64 ": %m\n",
+                            (uint64_t)b->vaddr[i], (uint64_t)b->vaddr[i] + size);
+            } else {
+                b->vaddr[i] = MAP_FAILED;
+            }
+            continue;
+        }
+        trace_vfio_user_setup_shadow_ioeventfd(eventfd, gpa, gpa + size,
+                                               (uint64_t)_vaddr,
+                                               (uint64_t)_vaddr + size);
+    }
+    return 0;
+}
+
+/*
+ * Tells whether shadow ioeventfds need to be configured. Assumes addr is a BAR.
+ */
+static bool should_configure_shadow_ioeventfds(uint32_t addr, uint32_t val,
+                                               int len)
+{
+    return !(addr & 3) && (len == 4) && (val != 0) && (val != 0xffffffff);
+}
+
 void vfio_pci_write_config(PCIDevice *pdev,
                            uint32_t addr, uint32_t val, int len)
 {
@@ -1472,6 +1595,24 @@ void vfio_pci_write_config(PCIDevice *pdev,
                 vdev->bars[bar].region.size > 0 &&
                 vdev->bars[bar].region.size < qemu_real_host_page_size()) {
                 vfio_sub_page_bar_update_mapping(pdev, bar);
+            }
+        }
+
+        if (!range_covers_byte(addr, len, PCI_COMMAND) &&
+            should_configure_shadow_ioeventfds(addr, val, len)) {
+            int index = (addr - PCI_BASE_ADDRESS_0) >> 2;
+            ret = configure_shadow_ioeventfds(&vbasedev->bar_ioeventfds[index],
+                                              val);
+            if (ret != 0) {
+                /*
+                 * We can't ignore this error because the server might not
+                 * work at all. Furthermore, propagating the error higher up
+                 * is not trivial as it requires changing the prototype of
+                 * PCIConfigWriteFunc, so we just abort.
+                 */
+                error_report("%s: failed to setup shadow ioeventfd: %s\n",
+                             vbasedev->name, strerror(-ret));
+                abort();
             }
         }
     } else {
@@ -1989,9 +2130,24 @@ void vfio_pci_bars_exit(VFIOPCIDevice *vdev)
     }
 }
 
+static void teardown_device_shadow_ioeventfds(VFIOPCIDevice *vdev)
+{
+    VFIODevice *vbasedev = &vdev->vbasedev;
+
+    for (int i = 0; i < ARRAY_SIZE(vbasedev->bar_ioeventfds); i++) {
+        struct bar_ioeventfd *b = &vbasedev->bar_ioeventfds[i];
+        teardown_bar_shadow_ioeventfds(b);
+        for (int j = 0; j < b->nr_fds; j++) {
+            close(b->fds[j]);
+        }
+    }
+}
+
 static void vfio_bars_finalize(VFIOPCIDevice *vdev)
 {
     int i;
+
+    teardown_device_shadow_ioeventfds(vdev);
 
     for (i = 0; i < PCI_ROM_SLOT; i++) {
         VFIOBAR *bar = &vdev->bars[i];
