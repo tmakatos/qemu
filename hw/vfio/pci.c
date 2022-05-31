@@ -1673,6 +1673,33 @@ static void vfio_bars_prepare(VFIOPCIDevice *vdev)
     }
 }
 
+static int configure_ioeventfd(uint64_t addr, uint32_t len, int fd,
+                               void *foo)
+{
+    int ret;
+    struct kvm_ioeventfd iofd = {
+        .datamatch = 0,
+        .addr = addr,
+        .len = len,
+        .flags = KVM_IOEVENTFD_FLAG_COMMIT_WRITE,
+        .fd = fd,
+        .vaddr = (__u64)foo,
+    };
+
+    assert(kvm_enabled());
+
+    ret = kvm_vm_ioctl(kvm_state, KVM_IOEVENTFD, &iofd);
+
+    if (ret < 0) {
+        ret = -errno;
+        error_report("XXX %m\n");
+        return ret;
+    }
+
+    return 0;
+
+}
+
 static void vfio_bar_register(VFIOPCIDevice *vdev, int nr)
 {
     VFIOBAR *bar = &vdev->bars[nr];
@@ -1693,6 +1720,23 @@ static void vfio_bar_register(VFIOPCIDevice *vdev, int nr)
         if (vfio_region_mmap(&bar->region)) {
             error_report("Failed to mmap %s BAR %d. Performance may be slow",
                          vdev->vbasedev.name, nr);
+        }
+
+        if (nr == 0 && vdev->vbasedev.ioeventfd.size > 0) { // FIXME
+#if 0
+            void memory_region_add_eventfd(bar->mr, 0, bar->size, false, 0);
+                               EventNotifier *e)
+#endif
+            void *vaddr = mmap(NULL, vdev->vbasedev.ioeventfd.size, PROT_READ | PROT_WRITE, MAP_SHARED, vdev->vbasedev.data_fd, vdev->vbasedev.ioeventfd.offset);
+            assert(vaddr != MAP_FAILED);
+            /* FIXME we can get the GPA from the PCI config space, offset 0x10-0x28 */
+            int size = 4;
+            assert(vdev->vbasedev.ioeventfd.size % size == 0);
+            for (int i = 0; i < vdev->vbasedev.ioeventfd.size / size; i++) {
+                int ret = configure_ioeventfd(0xfebd1000 + i, size, vdev->vbasedev.eventfd, vaddr + i);
+                assert(ret == 0);
+            }
+            error_report("XXX configured ioeventfd %d\n", vdev->vbasedev.eventfd);
         }
     }
 

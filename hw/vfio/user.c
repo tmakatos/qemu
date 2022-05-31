@@ -29,6 +29,7 @@
 #include "qapi/qmp/qstring.h"
 #include "qapi/qmp/qnum.h"
 #include "user.h"
+#include "trace.h"
 
 static uint64_t max_xfer_size = VFIO_USER_DEF_MAX_XFER;
 static uint64_t max_send_fds = VFIO_USER_DEF_MAX_FDS;
@@ -282,7 +283,8 @@ static int vfio_user_recv_one(VFIOProxy *proxy)
     if (isreply) {
         if (hdr.size > msg->rsize) {
             error_setg(&local_err,
-                       "vfio_user_recv reply larger than recv buffer");
+                       "vfio_user_recv reply (%u) larger than recv buffer (%u)",
+                       hdr.size, msg->rsize);
             goto err;
         }
         *msg->hdr = hdr;
@@ -1227,6 +1229,45 @@ static int vfio_user_get_region_info(VFIOProxy *proxy,
     return 0;
 }
 
+static int vfio_user_get_region_io_fds(VFIODevice *vbasedev, int index)
+{
+    g_autofree VFIOUserRegionIOFDs *msgp = NULL;
+    vfio_user_sub_region_ioeventfd_t *ioeventfds;
+    uint32_t size;
+    int _fds[2];
+    VFIOUserFDs fds = { 0, 2, _fds };
+
+    size = sizeof(VFIOUserRegionIOFDs) + sizeof(vfio_user_sub_region_ioeventfd_t);
+    msgp = g_malloc0(size);
+
+    vfio_user_request_msg(&msgp->hdr, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          sizeof(*msgp), 0);
+    msgp->argsz = size;
+    msgp->index = index;
+
+    vfio_user_send_wait(vbasedev->proxy, &msgp->hdr, &fds, size, false);
+    if (msgp->hdr.flags & VFIO_USER_ERROR) {
+        return -msgp->hdr.error_reply;
+    }
+
+    if (!msgp->count) {
+        trace_vfio_user_get_region_io_fds(vbasedev->name, index);
+        return 0;
+    }
+    assert(msgp->count == 1);
+    assert(index == 0);
+    error_printf("XXX region %d: argsz=%u flags=%x index=%u count=%u\n",
+                 index, msgp->argsz, msgp->flags, msgp->index, msgp->count);
+    ioeventfds = (vfio_user_sub_region_ioeventfd_t*)(msgp + 1);
+    error_printf("XXX offset=%lu size=%lu fd_index=%u type=%u flags=%x padding=%u datamatch=%lu\n",
+                 ioeventfds->offset, ioeventfds->size, ioeventfds->fd_index, ioeventfds->type, ioeventfds->flags, ioeventfds->padding, ioeventfds->datamatch);
+    assert(_fds[1] != -1);
+    vbasedev->ioeventfd = *ioeventfds;
+    vbasedev->eventfd = _fds[0];
+    vbasedev->data_fd = _fds[1];
+    return 0;
+}
+
 static int vfio_user_get_irq_info(VFIOProxy *proxy,
                                   struct vfio_irq_info *info)
 {
@@ -1499,6 +1540,13 @@ static int vfio_user_io_get_region_info(VFIODevice *vbasedev,
         return -EINVAL;
     }
 
+    if (info->index == 0 && info->size > 0 && info->flags != 0) {
+        ret = vfio_user_get_region_io_fds(vbasedev, info->index);
+        if (ret) {
+            assert(false);
+            return ret;        
+        }
+    }
     return 0;
 }
 
