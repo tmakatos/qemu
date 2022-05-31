@@ -31,6 +31,7 @@
 #endif
 #include "sysemu/sysemu.h"
 
+#include "hw/vfio/user-protocol.h"
 #define VFIO_MSG_PREFIX "vfio %s: "
 
 enum {
@@ -131,6 +132,19 @@ typedef struct VFIOHostDMAWindow {
 typedef struct VFIODeviceOps VFIODeviceOps;
 typedef struct VFIODevIO VFIODevIO;
 
+struct ioregionfds {
+    struct iovec *areas;
+    int nr_areas;
+    int *fds;
+};
+
+struct bar_ioeventfd {
+    unsigned int count;
+    vfio_user_sub_region_ioeventfd_t *regions;
+    int *fds;
+    uint32_t addr;
+};
+
 typedef struct VFIODevice {
     QLIST_ENTRY(VFIODevice) next;
     struct VFIOGroup *group;
@@ -156,6 +170,7 @@ typedef struct VFIODevice {
     VFIOProxy *proxy;
     struct vfio_region_info **regions;
     int *regfds;
+    struct bar_ioeventfd ioeventfds[6];
 } VFIODevice;
 
 struct VFIODeviceOps {

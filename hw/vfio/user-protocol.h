@@ -82,8 +82,8 @@ typedef struct {
  * It is clamped by the the number of FDs the qio channel supports in a
  * single message.
  */
-#define VFIO_USER_DEF_MAX_FDS   8
-#define VFIO_USER_MAX_MAX_FDS   16
+#define VFIO_USER_DEF_MAX_FDS   253
+#define VFIO_USER_MAX_MAX_FDS   253
 
 /*
  * Max transfer limits the amount of data in region and DMA messages.
@@ -145,6 +145,28 @@ typedef struct {
     uint64_t size;
     uint64_t offset;
 } VFIOUserRegionInfo;
+
+/*
+ * VFIO_USER_DEVICE_GET_REGION_IO_FDS
+ */
+typedef struct {
+    VFIOUserHdr hdr;
+    uint32_t argsz;
+    uint32_t flags;
+    uint32_t index;
+    uint32_t count;
+} VFIOUserRegionIOFDs;
+
+typedef struct vfio_user_sub_region_ioeventfd {
+    uint64_t gpa_offset;
+    uint64_t size;
+    uint32_t fd_index;
+    uint32_t type;
+    uint32_t flags;
+    uint32_t shadow_mem_fd_index;
+    uint64_t shadow_offset;
+    uint64_t datamatch;
+} __attribute__((packed)) vfio_user_sub_region_ioeventfd_t;
 
 /*
  * VFIO_USER_DEVICE_GET_IRQ_INFO
