@@ -30,7 +30,9 @@
 #include <linux/vfio.h>
 #endif
 #include "sysemu/sysemu.h"
+#include "hw/pci/pci_regs.h"
 
+#include "hw/vfio/user-protocol.h"
 #define VFIO_MSG_PREFIX "vfio %s: "
 
 enum {
@@ -131,6 +133,24 @@ typedef struct VFIOHostDMAWindow {
 typedef struct VFIODeviceOps VFIODeviceOps;
 typedef struct VFIODevIO VFIODevIO;
 
+struct bar_ioeventfd {
+    unsigned int count;
+    vfio_user_sub_region_ioeventfd_t *regions;
+
+    int *fds;
+    int nr_fds;
+
+    /*
+     * BAR address
+     */
+    uint32_t addr;
+
+    /*
+     * VMAs of shadow memory.
+     */
+    void **vaddr;
+};
+
 typedef struct VFIODevice {
     QLIST_ENTRY(VFIODevice) next;
     struct VFIOGroup *group;
@@ -156,6 +176,12 @@ typedef struct VFIODevice {
     VFIOProxy *proxy;
     struct vfio_region_info **regions;
     int *regfds;
+
+    /*
+     * We only support shadow ioeventfd for the BARs, because we need the GPA
+     * and for BARs we can get it via the PCI config space.
+     */
+    struct bar_ioeventfd bar_ioeventfds[PCI_STD_NUM_BARS];
 } VFIODevice;
 
 struct VFIODeviceOps {

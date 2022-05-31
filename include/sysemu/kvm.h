@@ -45,6 +45,7 @@ extern bool kvm_gsi_direct_mapping;
 extern bool kvm_readonly_mem_allowed;
 extern bool kvm_direct_msi_allowed;
 extern bool kvm_ioeventfd_any_length_allowed;
+extern bool kvm_shadow_ioeventfd_allowed;
 extern bool kvm_msi_use_devid;
 extern bool kvm_has_guest_debug;
 extern int kvm_sstep_flags;
@@ -584,4 +585,9 @@ bool kvm_arch_cpu_check_are_resettable(void);
 bool kvm_dirty_ring_enabled(void);
 
 uint32_t kvm_dirty_ring_size(void);
+
+int kvm_set_ioeventfd_mmio(int fd, hwaddr addr, uint32_t val,
+                           bool assign, uint32_t size, bool datamatch,
+                           void *vaddr);
+
 #endif
