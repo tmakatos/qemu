@@ -27,6 +27,7 @@
 #include <linux/vfio.h>
 #endif
 #include "system/system.h"
+#include "hw/vfio-user/protocol.h"
 #include "hw/vfio/vfio-container.h"
 #include "hw/vfio/vfio-cpr.h"
 #include "system/host_iommu_device.h"
@@ -48,6 +49,19 @@ typedef struct VFIOMigration VFIOMigration;
 typedef struct IOMMUFDBackend IOMMUFDBackend;
 typedef struct VFIOIOASHwpt VFIOIOASHwpt;
 typedef struct VFIOUserProxy VFIOUserProxy;
+
+struct ioregionfds {
+    struct iovec *areas;
+    int nr_areas;
+    int *fds;
+};
+
+struct bar_ioeventfd {
+    unsigned int count;
+    vfio_user_sub_region_ioeventfd_t *regions;
+    int *fds;
+    uint32_t addr;
+};
 
 typedef struct VFIODevice {
     QLIST_ENTRY(VFIODevice) next;
@@ -92,6 +106,7 @@ typedef struct VFIODevice {
     int *region_fds;
     VFIODeviceCPR cpr;
     VFIOUserProxy *proxy;
+    struct bar_ioeventfd ioeventfds[6];
 } VFIODevice;
 
 struct VFIODeviceOps {

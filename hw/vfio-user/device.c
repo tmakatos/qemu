@@ -127,6 +127,69 @@ static int vfio_user_get_region_info(VFIOUserProxy *proxy,
     return 0;
 }
 
+static int vfio_user_get_region_io_fds(VFIODevice *vbasedev, int index)
+{
+    g_autofree VFIOUserRegionIOFDs *msgp = NULL;
+    uint32_t size;
+    int _fds[VFIO_USER_DEF_MAX_FDS];
+    VFIOUserFDs fds = { 0, ARRAY_SIZE(_fds), _fds };
+    int i;
+    struct bar_ioeventfd *b;
+
+    /* TODO 1 and 2 can be refactored into a function that can be shared */
+
+    /* 1. get size */
+    size = sizeof(VFIOUserRegionIOFDs);
+    msgp = g_malloc0(size);
+    vfio_user_request_msg(&msgp->hdr, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          sizeof(*msgp), 0);
+    msgp->argsz = size;
+    msgp->index = index;
+    vfio_user_send_wait(vbasedev->proxy, &msgp->hdr, NULL, size, false);
+    if (msgp->hdr.flags & VFIO_USER_ERROR) {
+        return -msgp->hdr.error_reply;
+    }
+
+    if (!msgp->count) {
+        return 0;
+    }
+
+    /* 2. get actual I/O region FDs */
+    size = msgp->argsz + sizeof(VFIOUserRegionIOFDs);
+    g_free(msgp);
+    msgp = g_malloc0(size);
+    vfio_user_request_msg(&msgp->hdr, VFIO_USER_DEVICE_GET_REGION_IO_FDS,
+                          sizeof(*msgp), 0);
+    msgp->argsz = size;
+    msgp->index = index;
+    vfio_user_send_wait(vbasedev->proxy, &msgp->hdr, &fds, size, false);
+    if (msgp->hdr.flags & VFIO_USER_ERROR) {
+        return -msgp->hdr.error_reply;
+    }
+
+    if (msgp->count < 1) {
+        return 0;
+    }
+    b = &vbasedev->ioeventfds[index];
+    b->count = msgp->count;
+    assert(index == 0);
+    size = msgp->count * sizeof(*b->regions);
+    b->regions = g_malloc0(size);
+    memcpy(b->regions,
+           (vfio_user_sub_region_ioeventfd_t*)(msgp + 1),
+           size);
+
+    int fd_index = 0;
+    for (i = 0; i < msgp->count; i++) {
+        fd_index = MAX(fd_index, b->regions[i].fd_index);
+        fd_index = MAX(fd_index, b->regions[i].shadow_mem_fd_index);
+    }
+    size = (fd_index + 1) * sizeof(int);
+    b->fds = g_malloc0(size);
+    memcpy(b->fds, _fds, size);
+    return 0;
+}
+
 static int vfio_user_device_io_get_region_info(VFIODevice *vbasedev,
                                                struct vfio_region_info *info,
                                                int *fd)
@@ -147,6 +210,14 @@ static int vfio_user_device_io_get_region_info(VFIODevice *vbasedev,
     if ((info->flags & VFIO_REGION_INFO_FLAG_CAPS) &&
         (info->cap_offset < sizeof(*info) || info->cap_offset > info->argsz)) {
         return -EINVAL;
+    }
+
+    if (info->index == 0 && info->size > 0 && info->flags != 0) {
+        ret = vfio_user_get_region_io_fds(vbasedev, info->index);
+        if (ret) {
+            assert(false);
+            return ret;
+        }
     }
 
     return 0;
