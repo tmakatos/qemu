@@ -22,6 +22,7 @@
 #include CONFIG_DEVICES
 #include <linux/vfio.h>
 #include <sys/ioctl.h>
+#include <sys/eventfd.h>
 
 #include "hw/hw.h"
 #include "hw/pci/msi.h"
@@ -1219,6 +1220,70 @@ uint32_t vfio_pci_read_config(PCIDevice *pdev, uint32_t addr, int len)
     return val;
 }
 
+static int configure_ioeventfd(uint64_t gpa, uint32_t len, int fd,
+                               void *vaddr)
+{
+    int ret;
+    struct kvm_ioeventfd iofd = {
+        .datamatch = 0,
+        .addr = gpa,
+        .len = len,
+        .flags = KVM_IOEVENTFD_FLAG_COMMIT_WRITE,
+        .fd = fd,
+        .vaddr = (__u64)vaddr,
+    };
+
+    assert(kvm_enabled());
+
+    ret = kvm_vm_ioctl(kvm_state, KVM_IOEVENTFD, &iofd);
+
+    if (ret < 0) {
+        ret = -errno;
+        error_report("failed to set up shadow ioeventfd %d from GPA %" PRIx64 "-%" PRIx64 " to VA %" PRIx64 "-%" PRIx64 ": %m\n",
+                     fd, gpa, gpa + len, (uint64_t)vaddr, (uint64_t)vaddr + len);
+        return ret;
+    }
+
+    return 0;
+
+}
+
+static int
+configure_ioeventfds(struct bar_ioeventfd *b, uint32_t bar_addr)
+{
+    if (bar_addr & PCI_BASE_ADDRESS_SPACE_IO) {
+        /* KVM doesn't seem to trigger the eventfd. */
+        error_report("shadow ioeventfd not supported for I/O BARs\n");
+        return -EOPNOTSUPP;
+    }
+    int i;
+    void *vaddr = MAP_FAILED;
+    for (i = 0; i < b->count; i++) {
+        vfio_user_sub_region_ioeventfd_t *r = &b->regions[i];
+        uint64_t gpa = bar_addr + r->gpa_offset;
+        uint32_t size = r->size;
+        int shadow_mem_fd = b->fds[r->shadow_mem_fd_index];
+        /* TODO figure out common FDs, mmap only once */
+        vaddr = mmap(NULL, size + r->shadow_offset, PROT_READ | PROT_WRITE,
+                     MAP_SHARED, shadow_mem_fd, 0);
+        assert(vaddr != MAP_FAILED); /* FIXME */
+        int eventfd = b->fds[r->fd_index];
+        void *_vaddr = vaddr + r->shadow_offset;
+        int ret = configure_ioeventfd(gpa, size, eventfd, _vaddr);
+        assert(ret == 0); /* FIXME */
+        /* FIXME memory leak of vaddr */
+        /* FIXME must unregisted ioeventfd */
+
+        /* TODO convert into trace event once it's stable */
+        info_report("configured shadow ioeventfd %d from GPA %" PRIx64 "-%" PRIx64 " to VA %" PRIx64 "-%" PRIx64 "",
+                    eventfd, gpa, gpa + size, (uint64_t)_vaddr,
+                    (uint64_t)_vaddr + size);
+
+    }
+    b->addr = bar_addr;
+    return 0;
+}
+
 void vfio_pci_write_config(PCIDevice *pdev,
                            uint32_t addr, uint32_t val, int len)
 {
@@ -1292,6 +1357,26 @@ void vfio_pci_write_config(PCIDevice *pdev,
     } else {
         /* Write everything to QEMU to keep emulated bits correct */
         pci_default_write_config(pdev, addr, val, len);
+    }
+
+    if (addr >= PCI_BASE_ADDRESS_0 && addr <= PCI_BASE_ADDRESS_5 && ~addr & 3
+        && len == 4 && val != 0 && val != 0xffffffff) {
+        int index = (addr - PCI_BASE_ADDRESS_0) >> 2;
+        struct bar_ioeventfd *b = &vbasedev->ioeventfds[index];        
+        if (b->count > 0) {
+            assert(index == 0); /* FIXME only expecting SPDK to use BAR0 */
+            if (b->addr == 0) {
+                ret = configure_ioeventfds(b, val);
+                assert(ret == 0); /* FIXME */
+            } else {
+                /*
+                 * FIXME if a different address is written then we must
+                 * unregister the existing ioeventfd, which is not implemented.
+                 * Make sure we don't miss this.
+                 */
+                assert(val == b->addr);
+            }
+        }
     }
 }
 

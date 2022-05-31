@@ -171,3 +171,5 @@ vfio_iommu_map_dirty_notify(uint64_t iova_start, uint64_t iova_end) "iommu dirty
 vfio_user_recv_hdr(const char *name, uint16_t id, uint16_t cmd, uint32_t size, uint32_t flags) " (%s) id %x cmd %x size %x flags %x"
 vfio_user_recv_read(uint16_t id, int read) " id %x read %x"
 vfio_user_send_write(uint16_t id, int wrote) " id %x wrote %x"
+vfio_user_get_region_io_fds_none(const char *name, uint32_t index) " (%s) region %d: no region I/O FDs"
+vfio_user_get_region_io_fds_count(const char *name, uint32_t index, uint32_t regions_io_fd_count, uint32_t fd_count) " (%s) region %d: regions I/O fds %" PRIu32 " FDs %d" PRIu32
