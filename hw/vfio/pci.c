@@ -1903,6 +1903,7 @@ static void vfio_bar_register(VFIOPCIDevice *vdev, int nr)
         if (vfio_region_mmap(&bar->region)) {
             error_report("Failed to mmap %s BAR %d. Performance may be slow",
                          vdev->vbasedev.name, nr);
+            abort();
         }
     }
 
