@@ -1149,8 +1149,8 @@ static void vfio_sub_page_bar_update_mapping(PCIDevice *pdev, int bar)
     uint64_t size = region->size;
 
     /* Make sure that the whole region is allowed to be mmapped */
-    if (region->nr_mmaps != 1 || !region->mmaps[0].mmap ||
-        region->mmaps[0].size != region->size) {
+    if (region->nr_mmaps != 1 || !region->mmaps[0].real_mmap ||
+        region->mmaps[0].orig_size != region->size) {
         return;
     }
 
@@ -1514,8 +1514,8 @@ static void vfio_pci_fixup_msix_region(VFIOPCIDevice *vdev)
      * We expect to find a single mmap covering the whole BAR, anything else
      * means it's either unsupported or already setup.
      */
-    if (region->nr_mmaps != 1 || region->mmaps[0].offset ||
-        region->size != region->mmaps[0].size) {
+    if (region->nr_mmaps != 1 || region->mmaps[0].offset_within_region ||
+        region->size != region->mmaps[0].orig_size) {
         return;
     }
 
@@ -1539,19 +1539,19 @@ static void vfio_pci_fixup_msix_region(VFIOPCIDevice *vdev)
             trace_vfio_msix_fixup(vdev->vbasedev.name,
                                   vdev->msix->table_bar, 0, 0);
         } else {
-            region->mmaps[0].offset = end;
-            region->mmaps[0].size = region->size - end;
+            region->mmaps[0].offset_within_region = end;
+            region->mmaps[0].orig_size = region->size - end;
             trace_vfio_msix_fixup(vdev->vbasedev.name,
-                              vdev->msix->table_bar, region->mmaps[0].offset,
-                              region->mmaps[0].offset + region->mmaps[0].size);
+                              vdev->msix->table_bar, region->mmaps[0].offset_within_region,
+                              region->mmaps[0].offset_within_region + region->mmaps[0].orig_size);
         }
 
     /* Maybe it's aligned at the end of the BAR */
     } else if (end >= region->size) {
-        region->mmaps[0].size = start;
+        region->mmaps[0].orig_size = start;
         trace_vfio_msix_fixup(vdev->vbasedev.name,
-                              vdev->msix->table_bar, region->mmaps[0].offset,
-                              region->mmaps[0].offset + region->mmaps[0].size);
+                              vdev->msix->table_bar, region->mmaps[0].offset_within_region,
+                              region->mmaps[0].offset_within_region + region->mmaps[0].orig_size);
 
     /* Otherwise it must split the BAR */
     } else {
@@ -1560,16 +1560,16 @@ static void vfio_pci_fixup_msix_region(VFIOPCIDevice *vdev)
 
         memcpy(&region->mmaps[1], &region->mmaps[0], sizeof(VFIOMmap));
 
-        region->mmaps[0].size = start;
+        region->mmaps[0].orig_size = start;
         trace_vfio_msix_fixup(vdev->vbasedev.name,
-                              vdev->msix->table_bar, region->mmaps[0].offset,
-                              region->mmaps[0].offset + region->mmaps[0].size);
+                              vdev->msix->table_bar, region->mmaps[0].offset_within_region,
+                              region->mmaps[0].offset_within_region + region->mmaps[0].orig_size);
 
-        region->mmaps[1].offset = end;
-        region->mmaps[1].size = region->size - end;
+        region->mmaps[1].offset_within_region = end;
+        region->mmaps[1].orig_size = region->size - end;
         trace_vfio_msix_fixup(vdev->vbasedev.name,
-                              vdev->msix->table_bar, region->mmaps[1].offset,
-                              region->mmaps[1].offset + region->mmaps[1].size);
+                              vdev->msix->table_bar, region->mmaps[1].offset_within_region,
+                              region->mmaps[1].offset_within_region + region->mmaps[1].orig_size);
     }
 }
 

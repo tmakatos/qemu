@@ -44,9 +44,11 @@ enum {
 
 typedef struct VFIOMmap {
     MemoryRegion mem;
-    void *mmap;
-    off_t offset;
-    size_t size;
+    void *orig_mmap;
+    off_t offset_within_region;
+    size_t orig_size;
+    void *real_mmap;
+    size_t real_size;
 } VFIOMmap;
 
 typedef struct VFIORegion {

@@ -167,23 +167,23 @@ static void *get_data_section_size(VFIORegion *region, uint64_t data_offset,
     for (i = 0; i < region->nr_mmaps; i++) {
         VFIOMmap *map = region->mmaps + i;
 
-        if ((data_offset >= map->offset) &&
-            (data_offset < map->offset + map->size)) {
+        if ((data_offset >= map->offset_within_region) &&
+            (data_offset < map->offset_within_region + map->real_size)) {
 
             /* check if data_offset is within sparse mmap areas */
-            ptr = map->mmap + data_offset - map->offset;
+            ptr = map->real_mmap + data_offset - map->offset_within_region;
             if (size) {
-                *size = MIN(data_size, map->offset + map->size - data_offset);
+                *size = MIN(data_size, map->offset_within_region + map->real_size - data_offset);
             }
             break;
-        } else if ((data_offset < map->offset) &&
-                   (!limit || limit > map->offset)) {
+        } else if ((data_offset < map->offset_within_region) &&
+                   (!limit || limit > map->offset_within_region)) {
             /*
              * data_offset is not within sparse mmap areas, find size of
              * non-mapped area. Check through all list since region->mmaps list
              * is not sorted.
              */
-            limit = map->offset;
+            limit = map->offset_within_region;
         }
     }
 

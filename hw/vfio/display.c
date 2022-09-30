@@ -449,14 +449,14 @@ static void vfio_display_region_update(void *opaque)
                          plane.region_index, strerror(-ret));
             goto err;
         }
-        assert(dpy->region.buffer.mmaps[0].mmap != NULL);
+        assert(dpy->region.buffer.mmaps[0].real_mmap != NULL);
     }
 
     if (dpy->region.surface == NULL) {
         /* create surface */
         dpy->region.surface = qemu_create_displaysurface_from
             (plane.width, plane.height, format,
-             plane.stride, dpy->region.buffer.mmaps[0].mmap);
+             plane.stride, dpy->region.buffer.mmaps[0].real_mmap);
         dpy_gfx_replace_surface(dpy->con, dpy->region.surface);
     }
 

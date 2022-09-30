@@ -1622,8 +1622,8 @@ static int vfio_setup_region_sparse_mmaps(VFIORegion *region,
             trace_vfio_region_sparse_mmap_entry(i, sparse->areas[i].offset,
                                             sparse->areas[i].offset +
                                             sparse->areas[i].size - 1);
-            region->mmaps[j].offset = sparse->areas[i].offset;
-            region->mmaps[j].size = sparse->areas[i].size;
+            region->mmaps[j].offset_within_region = sparse->areas[i].offset;
+            region->mmaps[j].orig_size = sparse->areas[i].size;
             j++;
         }
     }
@@ -1670,8 +1670,8 @@ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
             if (ret) {
                 region->nr_mmaps = 1;
                 region->mmaps = g_new0(VFIOMmap, region->nr_mmaps);
-                region->mmaps[0].offset = 0;
-                region->mmaps[0].size = region->size;
+                region->mmaps[0].offset_within_region = 0;
+                region->mmaps[0].orig_size = region->size;
             }
         }
     }
@@ -1683,14 +1683,17 @@ int vfio_region_setup(Object *obj, VFIODevice *vbasedev, VFIORegion *region,
 
 static void vfio_subregion_unmap(VFIORegion *region, int index)
 {
+    /* FIXME */
+#if 0
     trace_vfio_region_unmap(memory_region_name(&region->mmaps[index].mem),
                             region->mmaps[index].offset,
                             region->mmaps[index].offset +
                             region->mmaps[index].size - 1);
+#endif
     memory_region_del_subregion(region->mem, &region->mmaps[index].mem);
-    munmap(region->mmaps[index].mmap, region->mmaps[index].size);
+    munmap(region->mmaps[index].real_mmap, region->mmaps[index].real_size);
     object_unparent(OBJECT(&region->mmaps[index].mem));
-    region->mmaps[index].mmap = NULL;
+    region->mmaps[index].real_mmap = NULL;
 }
 
 int vfio_region_mmap(VFIORegion *region)
@@ -1706,21 +1709,24 @@ int vfio_region_mmap(VFIORegion *region)
     prot |= region->flags & VFIO_REGION_INFO_FLAG_WRITE ? PROT_WRITE : 0;
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        region->mmaps[i].mmap = mmap(NULL, region->mmaps[i].size, prot,
-                                     MAP_SHARED, region->fd,
-                                     region->fd_offset +
-                                     region->mmaps[i].offset);
-        if (region->mmaps[i].mmap == MAP_FAILED) {
+        off_t orig_offset = region->fd_offset + region->mmaps[i].offset_within_region;
+        off_t real_offset = QEMU_ALIGN_DOWN(orig_offset, sysconf(_SC_PAGESIZE));
+        region->mmaps[i].real_size = orig_offset - real_offset + region->mmaps[i].orig_size;
+        /*
+         * TODO no need to do multiple mmap's since there's only one fd. We can
+         * determine the lowest and highest offsets and mmap only once.
+         */
+        region->mmaps[i].real_mmap = mmap(NULL, region->mmaps[i].real_size, prot,
+                                          MAP_SHARED, region->fd, real_offset);
+        if (region->mmaps[i].real_mmap == MAP_FAILED) {
             int ret = -errno;
 
             trace_vfio_region_mmap_fault(memory_region_name(region->mem), i,
-                                         region->fd_offset +
-                                         region->mmaps[i].offset,
-                                         region->fd_offset +
-                                         region->mmaps[i].offset +
-                                         region->mmaps[i].size - 1, ret);
+                                         real_offset,
+                                         real_offset + region->mmaps[i].real_size - 1,
+                                         ret);
 
-            region->mmaps[i].mmap = NULL;
+            region->mmaps[i].real_mmap = NULL;
 
             for (i--; i >= 0; i--) {
                 vfio_subregion_unmap(region, i);
@@ -1733,16 +1739,25 @@ int vfio_region_mmap(VFIORegion *region)
                                memory_region_name(region->mem), i);
         memory_region_init_ram_device_ptr(&region->mmaps[i].mem,
                                           memory_region_owner(region->mem),
-                                          name, region->mmaps[i].size,
-                                          region->mmaps[i].mmap);
+                                          name, region->mmaps[i].real_size,
+                                          /*
+                                           * FIXME this address is not page aligned and causes the following error:
+                                           *
+                                           *     qemu_madvise: Invalid argument
+                                           *     madvise doesn't support MADV_DONTDUMP, but dump_guest_core=off specified
+                                           *
+                                           * FWIU the effect of this is that in case of crash we'll dump the doorbells (which IMO is not a big deal).
+                                           * The best way to fix this is to pass the real mmap address and real size and use that for the madvise instead.
+                                           * Furthermore, if we do the optimization above where we only mmap once (since there's only one fd) then we'd need some bookkeeping to avoid having to madvise multiple times.
+                                           */ 
+                                          region->mmaps[i].real_mmap + orig_offset - real_offset);
         g_free(name);
-        memory_region_add_subregion(region->mem, region->mmaps[i].offset,
+        memory_region_add_subregion(region->mem, region->mmaps[i].offset_within_region,
                                     &region->mmaps[i].mem);
 
         trace_vfio_region_mmap(memory_region_name(&region->mmaps[i].mem),
-                               region->mmaps[i].offset,
-                               region->mmaps[i].offset +
-                               region->mmaps[i].size - 1);
+                               real_offset,
+                               real_offset + region->mmaps[i].real_size - 1);
     }
 
     return 0;
@@ -1757,7 +1772,7 @@ void vfio_region_unmap(VFIORegion *region)
     }
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        if (region->mmaps[i].mmap) {
+        if (region->mmaps[i].real_mmap) {
             vfio_subregion_unmap(region, i);
         }
     }
@@ -1772,7 +1787,7 @@ void vfio_region_exit(VFIORegion *region)
     }
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        if (region->mmaps[i].mmap) {
+        if (region->mmaps[i].real_mmap) {
             memory_region_del_subregion(region->mem, &region->mmaps[i].mem);
         }
     }
@@ -1789,8 +1804,8 @@ void vfio_region_finalize(VFIORegion *region)
     }
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        if (region->mmaps[i].mmap) {
-            munmap(region->mmaps[i].mmap, region->mmaps[i].size);
+        if (region->mmaps[i].real_mmap) {
+            munmap(region->mmaps[i].real_mmap, region->mmaps[i].real_size);
             object_unparent(OBJECT(&region->mmaps[i].mem));
         }
     }
@@ -1819,7 +1834,7 @@ void vfio_region_mmaps_set_enabled(VFIORegion *region, bool enabled)
     }
 
     for (i = 0; i < region->nr_mmaps; i++) {
-        if (region->mmaps[i].mmap) {
+        if (region->mmaps[i].real_mmap) {
             memory_region_set_enabled(&region->mmaps[i].mem, enabled);
         }
     }
