@@ -81,9 +81,11 @@ typedef struct {
  * where each ones uses an eventfd to inject it into the guest.
  * It is clamped by the the number of FDs the qio channel supports in a
  * single message.
+ *
+ * SCM_MAX_FD in linux/include/net/scm.h
  */
-#define VFIO_USER_DEF_MAX_FDS   8
-#define VFIO_USER_MAX_MAX_FDS   16
+#define VFIO_USER_DEF_MAX_FDS   253
+#define VFIO_USER_MAX_MAX_FDS   253
 
 /*
  * Max transfer limits the amount of data in region and DMA messages.

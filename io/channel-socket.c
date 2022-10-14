@@ -34,7 +34,7 @@
 #endif
 #endif
 
-#define SOCKET_MAX_FDS 16
+#define SOCKET_MAX_FDS 253
 
 SocketAddress *
 qio_channel_socket_get_local_address(QIOChannelSocket *ioc,
