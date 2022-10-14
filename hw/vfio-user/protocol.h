@@ -83,10 +83,11 @@ typedef struct {
  * Max FDs mainly comes into play when a device supports multiple interrupts
  * where each ones uses an eventfd to inject it into the guest.
  * It is clamped by the the number of FDs the qio channel supports in a
- * single message.
+ * single message (SOCKET_MAX_FDS, which is set to the maximum SCM_MAX_FD value
+ * from linux/include/net/scm.h).
  */
-#define VFIO_USER_DEF_MAX_FDS   8
-#define VFIO_USER_MAX_MAX_FDS   16
+#define VFIO_USER_DEF_MAX_FDS   253
+#define VFIO_USER_MAX_MAX_FDS   253
 
 /*
  * Max transfer limits the amount of data in region and DMA messages.
