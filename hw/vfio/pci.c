@@ -1417,7 +1417,12 @@ static void teardown_bar_shadow_ioeventfds(struct bar_ioeventfd *b)
         vfio_user_sub_region_ioeventfd_t *r = &b->regions[i];
         uint64_t gpa = b->addr + r->gpa_offset;
         uint32_t size = r->size;
-        int eventfd = b->fds[r->fd_index];
+        int eventfd;
+        if (r->fd_index == -1) {
+            eventfd = -1;
+        } else {
+            eventfd = b->fds[r->fd_index];
+        }
         int ret = kvm_set_ioeventfd_mmio(eventfd, gpa, 0, false, size, false,
                                          NULL);
         if (ret != 0) {
@@ -1495,7 +1500,12 @@ static int configure_shadow_ioeventfds(struct bar_ioeventfd *b,
                         shadow_mem_fd, (uint64_t)0, (uint64_t)size + r->shadow_offset);
             continue;
         }
-        int eventfd = b->fds[r->fd_index];
+        int eventfd;
+        if (r->fd_index == -1) {
+            eventfd = -1;
+        } else {
+            eventfd = b->fds[r->fd_index];
+        }
         void *_vaddr = b->vaddr[i] + r->shadow_offset;
         ret = kvm_set_ioeventfd_mmio(eventfd, gpa, 0, true, size, false,
                                      _vaddr);
