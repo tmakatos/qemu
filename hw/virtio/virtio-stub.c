@@ -40,3 +40,17 @@ VirtioQueueElement *qmp_x_query_virtio_queue_element(const char *path,
 {
     return qmp_virtio_unsupported(errp);
 }
+
+void qmp_x_virtio_scsi_set_iothread_vq_mapping(
+        const char *path,
+        IOThreadVirtQueueMappingList *iothread_vq_mapping,
+        Error **errp)
+{
+    error_setg(errp, "Virtio is disabled");
+}
+
+HumanReadableText *qmp_x_query_prometheus_metrics(Error **errp)
+{
+    error_setg(errp, "Virtio is disabled");
+    return NULL;
+}

@@ -2,6 +2,8 @@
 # vim: filetype=python
 #
 
+{ 'include': 'common.json' }
+
 ##
 # **************
 # Virtio devices
@@ -1000,6 +1002,58 @@
 { 'struct': 'DummyVirtioForceArrays',
   'data': { 'unused-iothread-vq-mapping': ['IOThreadVirtQueueMapping'],
             'unused-virtio-gpu-output': ['VirtIOGPUOutput'] } }
+
+##
+# @x-virtio-scsi-set-iothread-vq-mapping:
+#
+# Reassign each command virtqueue of a virtio-scsi device from its
+# current IOThread AioContext to the AioContext of the IOThread named
+# in @iothread-vq-mapping.  All in-flight requests on the device are
+# drained before any AioContext is changed.
+#
+# The device must have been realized with an iothread-vq-mapping
+# property (the single-iothread shorthand is not supported).  The
+# fixed ctrl and event virtqueues (indices 0 and 1) always remain on
+# the main loop and are not affected.
+#
+# Virtqueue indices in @iothread-vq-mapping are command-vq indices
+# in [0, num_queues).
+#
+# @path: VirtIODevice canonical QOM path of a virtio-scsi-device
+#
+# @iothread-vq-mapping: new mapping, validated identically to the
+#     realize-time iothread-vq-mapping device property.
+#
+# Features:
+#
+# @unstable: This command is experimental.
+#
+# Since: 10.1
+##
+{ 'command': 'x-virtio-scsi-set-iothread-vq-mapping',
+  'data': { 'path': 'str',
+            'iothread-vq-mapping': ['IOThreadVirtQueueMapping'] },
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-prometheus-metrics:
+#
+# Return a Prometheus text-format snapshot of IOThread, virtio-scsi,
+# and block device metrics.  Intended for consumption by external
+# controllers that manage IOThread scaling.
+#
+# Features:
+#
+# @unstable: This command is experimental.  The metric set may change.
+#
+# Returns: Prometheus text exposition format wrapped in a
+#     HumanReadableText payload.
+#
+# Since: 10.1
+##
+{ 'command': 'x-query-prometheus-metrics',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
 
 ##
 # @GranuleMode:
