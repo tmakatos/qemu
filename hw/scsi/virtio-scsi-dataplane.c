@@ -13,8 +13,10 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qapi/clone-visitor.h"
 #include "hw/virtio/virtio-scsi.h"
 #include "qemu/error-report.h"
+#include "qemu/rcu.h"
 #include "system/block-backend.h"
 #include "hw/scsi/scsi.h"
 #include "scsi/constants.h"
@@ -289,4 +291,111 @@ void virtio_scsi_dataplane_stop(VirtIODevice *vdev)
     k->set_guest_notifiers(qbus->parent, vs->conf.num_queues + 2, false);
     s->dataplane_stopping = false;
     s->dataplane_started = false;
+}
+
+/* Context: BQL held (called from QMP dispatcher) */
+void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
+                                         IOThreadVirtQueueMappingList *map,
+                                         Error **errp)
+{
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
+    IOThreadVirtQueueMappingList *new_map;
+    uint32_t i;
+
+    if (s->dataplane_starting || s->dataplane_stopping) {
+        error_setg(errp, "virtio-scsi dataplane is in transition");
+        return;
+    }
+    if (s->dataplane_fenced) {
+        error_setg(errp, "virtio-scsi dataplane is fenced");
+        return;
+    }
+    if (vs->conf.iothread) {
+        error_setg(errp,
+                   "runtime remap requires iothread-vq-mapping, not the "
+                   "single-iothread shorthand");
+        return;
+    }
+    if (!vs->conf.iothread_vq_mapping_list) {
+        error_setg(errp,
+                   "device was not configured with iothread-vq-mapping");
+        return;
+    }
+
+    /*
+     * Deep-copy: the QAPI dispatcher frees the original after we return,
+     * but iothread_vq_mapping_apply_runtime takes ownership.
+     */
+    new_map = QAPI_CLONE(IOThreadVirtQueueMappingList, map);
+
+    if (!s->dataplane_started) {
+        if (!iothread_vq_mapping_apply_runtime(
+                new_map, &vs->conf.iothread_vq_mapping_list,
+                &s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED],
+                vs->conf.num_queues, errp)) {
+            qapi_free_IOThreadVirtQueueMappingList(new_map);
+            return;
+        }
+        return;
+    }
+
+    /*
+     * Quiesce: detach host notifiers from current AioContexts for every
+     * command virtqueue, then drain all in-flight requests.
+     */
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        VirtQueue *vq = vs->cmd_vqs[i];
+        AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+        aio_wait_bh_oneshot(ctx, virtio_scsi_dataplane_stop_vq_bh, vq);
+    }
+
+    blk_drain_all();
+
+    /* Swap the mapping: validates, takes new refs, drops old refs */
+    if (!iothread_vq_mapping_apply_runtime(
+            new_map, &vs->conf.iothread_vq_mapping_list,
+            &s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED],
+            vs->conf.num_queues, errp)) {
+        /*
+         * Mapping swap failed — reattach to old contexts so the device
+         * doesn't stay wedged.
+         */
+        qapi_free_IOThreadVirtQueueMappingList(new_map);
+        for (i = 0; i < vs->conf.num_queues; i++) {
+            AioContext *ctx =
+                s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+            virtio_queue_aio_attach_host_notifier(vs->cmd_vqs[i], ctx);
+        }
+        return;
+    }
+
+    /* Reattach host notifiers to the new AioContexts */
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+        virtio_queue_aio_attach_host_notifier(vs->cmd_vqs[i], ctx);
+    }
+
+    /*
+     * Best-effort: re-home each LUN's BlockBackend to the first command
+     * queue's AioContext, matching what virtio_scsi_hotplug() does.
+     */
+    {
+        AioContext *new_ctx =
+            s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED];
+        BusChild *kid;
+
+        rcu_read_lock();
+        QTAILQ_FOREACH_RCU(kid, &s->bus.qbus.children, sibling) {
+            SCSIDevice *sd = SCSI_DEVICE(kid->child);
+            if (sd->conf.blk) {
+                int ret = blk_set_aio_context(sd->conf.blk, new_ctx, NULL);
+                if (ret < 0) {
+                    warn_report("virtio-scsi: failed to set AioContext "
+                                "for LUN %d/%d/%d",
+                                sd->channel, sd->id, sd->lun);
+                }
+            }
+        }
+        rcu_read_unlock();
+    }
 }

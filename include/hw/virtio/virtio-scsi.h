@@ -112,5 +112,8 @@ void virtio_scsi_dataplane_setup(VirtIOSCSI *s, Error **errp);
 void virtio_scsi_dataplane_cleanup(VirtIOSCSI *s);
 int virtio_scsi_dataplane_start(VirtIODevice *s);
 void virtio_scsi_dataplane_stop(VirtIODevice *s);
+void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
+                                         IOThreadVirtQueueMappingList *map,
+                                         Error **errp);
 
 #endif /* QEMU_VIRTIO_SCSI_H */
