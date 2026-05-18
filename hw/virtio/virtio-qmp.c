@@ -19,6 +19,10 @@
 #include "qobject/qjson.h"
 #include "hw/virtio/vhost-user.h"
 #include "hw/virtio/virtio-scsi.h"
+#include "qapi/qapi-commands-misc.h"
+#include "qapi/qapi-commands-block-core.h"
+#include "qapi/type-helpers.h"
+#include "system/iothread.h"
 
 #include "standard-headers/linux/virtio_ids.h"
 #include "standard-headers/linux/vhost_types.h"
@@ -849,4 +853,174 @@ void qmp_x_virtio_scsi_set_iothread_vq_mapping(
 
     virtio_scsi_set_iothread_vq_mapping(VIRTIO_SCSI(scsi),
                                         iothread_vq_mapping, errp);
+}
+
+typedef struct FindIOThreadCtx {
+    AioContext *target;
+    char *result;
+} FindIOThreadCtx;
+
+static int match_iothread_ctx(Object *object, void *opaque)
+{
+    FindIOThreadCtx *fc = opaque;
+    IOThread *iot;
+
+    iot = (IOThread *)object_dynamic_cast(object, TYPE_IOTHREAD);
+    if (iot && iothread_get_aio_context(iot) == fc->target) {
+        fc->result = iothread_get_id(iot);
+        return 1;
+    }
+    return 0;
+}
+
+/*
+ * Reverse-lookup: given an AioContext, find the IOThread id that owns it.
+ * Returns a g_strdup'd string or NULL if ctx is the main loop context.
+ */
+static char *find_iothread_id_for_ctx(AioContext *ctx)
+{
+    FindIOThreadCtx fc = { .target = ctx, .result = NULL };
+    object_child_foreach(object_get_objects_root(), match_iothread_ctx, &fc);
+    return fc.result;
+}
+
+static int prom_collect_num_queues(Object *child, void *opaque)
+{
+    GString *buf = opaque;
+    Object *dev = object_dynamic_cast(child, TYPE_VIRTIO_SCSI);
+    VirtIOSCSICommon *vs;
+    g_autofree char *path = NULL;
+
+    if (!dev || !DEVICE(dev)->realized) {
+        return 0;
+    }
+    vs = VIRTIO_SCSI_COMMON(dev);
+    path = object_get_canonical_path(dev);
+    g_string_append_printf(buf,
+        "qemu_virtio_scsi_num_queues{device=\"%s\"} %u\n",
+        path, vs->conf.num_queues);
+    return 0;
+}
+
+static int prom_collect_vq_iothread(Object *child, void *opaque)
+{
+    GString *buf = opaque;
+    Object *dev = object_dynamic_cast(child, TYPE_VIRTIO_SCSI);
+    VirtIOSCSI *s;
+    VirtIOSCSICommon *vs;
+    g_autofree char *path = NULL;
+
+    if (!dev || !DEVICE(dev)->realized) {
+        return 0;
+    }
+    s = VIRTIO_SCSI(dev);
+    vs = VIRTIO_SCSI_COMMON(dev);
+    if (!s->vq_aio_context) {
+        return 0;
+    }
+    path = object_get_canonical_path(dev);
+    for (uint32_t i = 0; i < vs->conf.num_queues; i++) {
+        AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+        g_autofree char *iot_id = find_iothread_id_for_ctx(ctx);
+
+        g_string_append_printf(buf,
+            "qemu_virtio_scsi_vq_iothread"
+            "{device=\"%s\",vq=\"%u\",iothread=\"%s\"} 1\n",
+            path, i, iot_id ? iot_id : "main-loop");
+    }
+    return 0;
+}
+
+HumanReadableText *qmp_x_query_prometheus_metrics(Error **errp)
+{
+    g_autoptr(GString) buf = g_string_new("");
+    IOThreadInfoList *iothreads, *node;
+    BlockStatsList *blockstats, *bs_node;
+
+    /* IOThread info */
+    iothreads = qmp_query_iothreads(NULL);
+    if (iothreads) {
+        g_string_append(buf,
+            "# HELP qemu_iothread_info Per-IOThread identity (unstable)\n"
+            "# TYPE qemu_iothread_info gauge\n");
+        for (node = iothreads; node; node = node->next) {
+            IOThreadInfo *info = node->value;
+            g_string_append_printf(buf,
+                "qemu_iothread_info{id=\"%s\",tid=\"%" PRId64 "\"} 1\n",
+                info->id, info->thread_id);
+        }
+        qapi_free_IOThreadInfoList(iothreads);
+    }
+
+    /* virtio-scsi: num_queues per device */
+    g_string_append(buf,
+        "# HELP qemu_virtio_scsi_num_queues "
+        "Number of command virtqueues (unstable)\n"
+        "# TYPE qemu_virtio_scsi_num_queues gauge\n");
+    object_child_foreach_recursive(object_get_root(),
+                                   prom_collect_num_queues, buf);
+
+    /* virtio-scsi: current vq->iothread mapping */
+    g_string_append(buf,
+        "# HELP qemu_virtio_scsi_vq_iothread "
+        "Current vq-to-iothread mapping (unstable)\n"
+        "# TYPE qemu_virtio_scsi_vq_iothread gauge\n");
+    object_child_foreach_recursive(object_get_root(),
+                                   prom_collect_vq_iothread, buf);
+
+    /* Block device stats */
+    blockstats = qmp_query_blockstats(false, false, NULL);
+    if (blockstats) {
+        g_string_append(buf,
+            "# HELP qemu_block_rd_operations_total "
+            "Read operations completed (unstable)\n"
+            "# TYPE qemu_block_rd_operations_total counter\n"
+            "# HELP qemu_block_wr_operations_total "
+            "Write operations completed (unstable)\n"
+            "# TYPE qemu_block_wr_operations_total counter\n"
+            "# HELP qemu_block_rd_bytes_total "
+            "Bytes read (unstable)\n"
+            "# TYPE qemu_block_rd_bytes_total counter\n"
+            "# HELP qemu_block_wr_bytes_total "
+            "Bytes written (unstable)\n"
+            "# TYPE qemu_block_wr_bytes_total counter\n"
+            "# HELP qemu_block_rd_total_time_seconds_total "
+            "Cumulative read time in seconds (unstable)\n"
+            "# TYPE qemu_block_rd_total_time_seconds_total counter\n"
+            "# HELP qemu_block_wr_total_time_seconds_total "
+            "Cumulative write time in seconds (unstable)\n"
+            "# TYPE qemu_block_wr_total_time_seconds_total counter\n");
+
+        for (bs_node = blockstats; bs_node; bs_node = bs_node->next) {
+            BlockStats *st = bs_node->value;
+            const char *dev_name;
+            BlockDeviceStats *ds = st->stats;
+
+            if (!ds) {
+                continue;
+            }
+            /* Prefer the qdev id, fall back to BB name, then node-name. */
+            dev_name = st->qdev   ? st->qdev
+                     : st->device ? st->device
+                     : st->node_name ? st->node_name
+                     : "unknown";
+
+            g_string_append_printf(buf,
+                "qemu_block_rd_operations_total{device=\"%s\"} %" PRId64 "\n"
+                "qemu_block_wr_operations_total{device=\"%s\"} %" PRId64 "\n"
+                "qemu_block_rd_bytes_total{device=\"%s\"} %" PRId64 "\n"
+                "qemu_block_wr_bytes_total{device=\"%s\"} %" PRId64 "\n"
+                "qemu_block_rd_total_time_seconds_total{device=\"%s\"} %.2f\n"
+                "qemu_block_wr_total_time_seconds_total{device=\"%s\"} %.2f\n",
+                dev_name, ds->rd_operations,
+                dev_name, ds->wr_operations,
+                dev_name, ds->rd_bytes,
+                dev_name, ds->wr_bytes,
+                dev_name, (double)ds->rd_total_time_ns / 1e9,
+                dev_name, (double)ds->wr_total_time_ns / 1e9);
+        }
+        qapi_free_BlockStatsList(blockstats);
+    }
+
+    return human_readable_text_from_str(buf);
 }
