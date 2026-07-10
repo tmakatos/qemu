@@ -59,4 +59,31 @@ bool iothread_vq_mapping_validate(
  */
 void iothread_vq_mapping_cleanup(IOThreadVirtQueueMappingList *list);
 
+/**
+ * iothread_vq_mapping_apply_runtime:
+ * @new_list: The new mapping of virtqueues to IOThreads.
+ * @conf_list_ptr: Pointer to the device's conf iothread_vq_mapping_list
+ *     field.  On success the old list is freed and replaced with @new_list.
+ * @vq_aio_context: The live array of AioContext pointers to update in place.
+ * @num_queues: The length of @vq_aio_context.
+ * @errp: If an error occurs, a pointer to the area to store the error.
+ *
+ * Runtime counterpart of iothread_vq_mapping_apply().  Validates @new_list,
+ * takes fresh IOThread object references for it, overwrites @vq_aio_context,
+ * drops the old IOThread references held via @conf_list_ptr, and swaps
+ * @conf_list_ptr to point to @new_list.
+ *
+ * The caller must ensure all virtqueues have been quiesced (host notifiers
+ * detached, requests drained) before calling this function, and must
+ * reattach host notifiers to the new AioContexts afterwards.
+ *
+ * Returns: %true on success, %false on failure (state unchanged).
+ */
+bool iothread_vq_mapping_apply_runtime(
+        IOThreadVirtQueueMappingList *new_list,
+        IOThreadVirtQueueMappingList **conf_list_ptr,
+        AioContext **vq_aio_context,
+        uint16_t num_queues,
+        Error **errp);
+
 #endif /* HW_VIRTIO_IOTHREAD_VQ_MAPPING_H */

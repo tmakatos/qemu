@@ -130,3 +130,68 @@ void iothread_vq_mapping_cleanup(IOThreadVirtQueueMappingList *list)
     }
 }
 
+bool iothread_vq_mapping_apply_runtime(
+        IOThreadVirtQueueMappingList *new_list,
+        IOThreadVirtQueueMappingList **conf_list_ptr,
+        AioContext **vq_aio_context,
+        uint16_t num_queues,
+        Error **errp)
+{
+    IOThreadVirtQueueMappingList *node;
+    size_t num_iothreads = 0;
+    size_t cur_iothread = 0;
+
+    if (!iothread_vq_mapping_validate(new_list, num_queues, errp)) {
+        return false;
+    }
+
+    for (node = new_list; node; node = node->next) {
+        num_iothreads++;
+    }
+
+    /* Take refs on the new IOThreads and fill in vq_aio_context[] */
+    for (node = new_list; node; node = node->next) {
+        IOThread *iothread = iothread_by_id(node->value->iothread);
+        AioContext *ctx = iothread_get_aio_context(iothread);
+
+        object_ref(OBJECT(iothread));
+
+        /*
+         * Two shapes are accepted, mirroring iothread_vq_mapping_apply():
+         *
+         *   - explicit vq list ("iothread-vq-mapping.N.iothread=iotN,
+         *     iothread-vq-mapping.N.vqs.0=A,...vqs.M=Z"): assign each
+         *     listed virtqueue index to this iothread's AioContext.
+         *
+         *   - no vq list (shorthand): virtqueues are round-robined
+         *     across the iothreads in the order they appear in the
+         *     list. The k-th iothread in the list (0-based
+         *     cur_iothread) owns vqs cur_iothread, cur_iothread +
+         *     num_iothreads, cur_iothread + 2*num_iothreads, ...
+         */
+        if (node->value->vqs) {
+            uint16List *vq;
+            for (vq = node->value->vqs; vq; vq = vq->next) {
+                assert(vq->value < num_queues);
+                vq_aio_context[vq->value] = ctx;
+            }
+        } else {
+            for (unsigned i = cur_iothread; i < num_queues;
+                 i += num_iothreads) {
+                vq_aio_context[i] = ctx;
+            }
+        }
+
+        cur_iothread++;
+    }
+
+    /* Drop refs held by the old mapping and free it */
+    if (*conf_list_ptr) {
+        iothread_vq_mapping_cleanup(*conf_list_ptr);
+        qapi_free_IOThreadVirtQueueMappingList(*conf_list_ptr);
+    }
+
+    *conf_list_ptr = new_list;
+    return true;
+}
+
