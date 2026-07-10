@@ -13,6 +13,8 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qapi/clone-visitor.h"
+#include "qapi/qapi-visit-virtio.h"
 #include "hw/virtio/virtio-scsi.h"
 #include "qemu/error-report.h"
 #include "system/block-backend.h"
@@ -289,4 +291,185 @@ void virtio_scsi_dataplane_stop(VirtIODevice *vdev)
     k->set_guest_notifiers(qbus->parent, vs->conf.num_queues + 2, false);
     s->dataplane_stopping = false;
     s->dataplane_started = false;
+}
+
+/*
+ * Reject calls that would race with dataplane start/stop, calls on a
+ * fenced device, and calls on devices realized without an
+ * iothread-vq-mapping property (there's nothing to remap in that case).
+ */
+static bool virtio_scsi_set_iothread_vq_mapping_check(VirtIOSCSI *s,
+                                                      Error **errp)
+{
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
+
+    if (s->dataplane_starting || s->dataplane_stopping) {
+        error_setg(errp, "virtio-scsi dataplane is in transition");
+        return false;
+    }
+    if (s->dataplane_fenced) {
+        error_setg(errp, "virtio-scsi dataplane is fenced");
+        return false;
+    }
+    if (vs->conf.iothread) {
+        error_setg(errp,
+                   "runtime remap requires iothread-vq-mapping, not the "
+                   "single-iothread shorthand");
+        return false;
+    }
+    if (!vs->conf.iothread_vq_mapping_list) {
+        error_setg(errp,
+                   "device was not configured with iothread-vq-mapping");
+        return false;
+    }
+    return true;
+}
+
+/*
+ * Quiesce the dataplane: mark ourselves the sole owner of notifier
+ * (re)attachment for the duration of the rebind, detach host notifiers
+ * from their current AioContexts, and drain all in-flight requests.
+ *
+ * Setting s->dataplane_stopping = true suppresses the SCSIBus
+ * ->drained_begin/end auto-attach path for the whole rebind.
+ * blk_drain_all() and blk_set_aio_context() each run the block layer's
+ * drain machinery, which calls into scsi-disk BlockDevOps and winds up
+ * at virtio_scsi_drained_begin/end. drained_end unconditionally
+ * re-attaches the host notifier to whatever s->vq_aio_context[i] points
+ * at right now. That fights with our manual detach/attach in two ways:
+ *
+ *   - The drain inside blk_drain_all() re-attaches the cmd-vq host
+ *     notifier to the OLD ctx (vq_aio_context[] has not yet been
+ *     swapped). The next time we ourselves try to "attach" we double-
+ *     attach, and any kick that snuck in between is dispatched on the
+ *     OLD ctx even though we are about to move the BB.
+ *
+ *   - The drain inside blk_set_aio_context() (per-LUN) runs after we
+ *     have swapped vq_aio_context[] but BEFORE the BB has actually
+ *     moved. drained_end attaches the notifier to the NEW ctx, the new
+ *     ctx starts popping requests, and those requests are dispatched to
+ *     a BlockBackend whose AioContext is still in flight (mid-move).
+ *     The completion then runs on the OLD ctx and calls virtqueue_push()
+ *     on a cmd vq whose owner is now NEW. Cmd-vq completions are
+ *     unlocked (single-owner assumption), so two threads concurrently
+ *     write the same used-ring slot; the guest then reads a descriptor
+ *     index it never submitted and prints "request id N is not head".
+ *
+ * The same flag is used by the dataplane teardown path for the same
+ * reason; clearing it in the caller before returning restores normal
+ * drain semantics.
+ */
+static void virtio_scsi_set_iothread_vq_mapping_quiesce(VirtIOSCSI *s)
+{
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
+    uint32_t i;
+
+    assert(!s->dataplane_stopping);
+    s->dataplane_stopping = true;
+
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        VirtQueue *vq = vs->cmd_vqs[i];
+        AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+        aio_wait_bh_oneshot(ctx, virtio_scsi_dataplane_stop_vq_bh, vq);
+    }
+
+    blk_drain_all();
+}
+
+/* Context: BQL held (called from QMP dispatcher) */
+void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
+                                         IOThreadVirtQueueMappingList *map,
+                                         Error **errp)
+{
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
+    IOThreadVirtQueueMappingList *new_map;
+    AioContext *new_ctx;
+    BusChild *kid;
+    uint32_t i;
+
+    if (!virtio_scsi_set_iothread_vq_mapping_check(s, errp)) {
+        return;
+    }
+
+    /*
+     * Deep-copy: the QAPI dispatcher frees the original after we return,
+     * but iothread_vq_mapping_apply_runtime takes ownership.
+     */
+    new_map = QAPI_CLONE(IOThreadVirtQueueMappingList, map);
+
+    if (!s->dataplane_started) {
+        if (!iothread_vq_mapping_apply_runtime(
+                new_map, &vs->conf.iothread_vq_mapping_list,
+                &s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED],
+                vs->conf.num_queues, errp)) {
+            qapi_free_IOThreadVirtQueueMappingList(new_map);
+        }
+        return;
+    }
+
+    virtio_scsi_set_iothread_vq_mapping_quiesce(s);
+
+    /* Swap the mapping: validates, takes new refs, drops old refs */
+    if (!iothread_vq_mapping_apply_runtime(
+            new_map, &vs->conf.iothread_vq_mapping_list,
+            &s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED],
+            vs->conf.num_queues, errp)) {
+        /*
+         * Mapping swap failed — reattach to old contexts so the device
+         * doesn't stay wedged.
+         */
+        qapi_free_IOThreadVirtQueueMappingList(new_map);
+        for (i = 0; i < vs->conf.num_queues; i++) {
+            AioContext *ctx =
+                s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+            virtio_queue_aio_attach_host_notifier(vs->cmd_vqs[i], ctx);
+        }
+        s->dataplane_stopping = false;
+        return;
+    }
+
+    /*
+     * Re-home each LUN's BlockBackend to the new "primary" command-queue
+     * AioContext BEFORE reattaching host notifiers.
+     *
+     * The order matters: virtio_queue_aio_attach_host_notifier() kicks the
+     * VQ once the notifier is on the new ctx, so new guest requests will
+     * be popped on the new ctx and dispatched to the BlockBackend. If the
+     * BB still lives on the old iothread's ctx at that point, the blk_aio_*
+     * dispatch crosses threads; the completion then runs on the OLD ctx and
+     * calls virtqueue_push() on a VQ whose AioContext is now the NEW ctx.
+     * The cmd-VQ completion path takes no lock (it assumes a single owning
+     * iothread), so two threads end up writing to the same used-ring slot
+     * and the guest observes spurious / duplicated descriptor indices
+     * ("request id N is not head"). Moving the BBs first ensures the whole
+     * post-rebind data path is single-threaded on the new ctx.
+     *
+     * Matches virtio_scsi_hotplug(), and virtio-blk's start path which also
+     * calls blk_set_aio_context() before virtio_blk_ioeventfd_attach().
+     *
+     * BQL serializes against qbus child add/remove, so plain QTAILQ_FOREACH
+     * is sufficient; no rcu_read_lock() needed (blk_set_aio_context() can
+     * yield during drain and must not run inside an RCU read section).
+     */
+    new_ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED];
+    QTAILQ_FOREACH(kid, &s->bus.qbus.children, sibling) {
+        SCSIDevice *sd = SCSI_DEVICE(kid->child);
+        if (sd->conf.blk) {
+            int ret = blk_set_aio_context(sd->conf.blk, new_ctx, NULL);
+            if (ret < 0) {
+                warn_report("virtio-scsi: failed to set AioContext "
+                            "for LUN %d/%d/%d",
+                            sd->channel, sd->id, sd->lun);
+            }
+        }
+    }
+
+    /* Reattach host notifiers to the new AioContexts. After this point
+     * the new ctx will see kicks and start popping descriptors. */
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + i];
+        virtio_queue_aio_attach_host_notifier(vs->cmd_vqs[i], ctx);
+    }
+
+    s->dataplane_stopping = false;
 }
