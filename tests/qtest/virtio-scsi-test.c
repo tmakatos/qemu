@@ -11,6 +11,7 @@
 #include "qemu/osdep.h"
 #include "libqtest-single.h"
 #include "qemu/module.h"
+#include "qobject/qdict.h"
 #include "scsi/constants.h"
 #include "libqos/libqos-pc.h"
 #include "libqos/libqos-spapr.h"
@@ -336,6 +337,120 @@ static void test_iothread_virtio_error(void *obj, void *data,
     qvirtio_scsi_pci_free(vs);
 }
 
+/*
+ * Exercise the x-virtio-scsi-set-iothread-vq-mapping runtime rebind:
+ * start with two iothreads mapped 1:1 to the two command virtqueues,
+ * do a WRITE, swap the mapping via QMP, do another WRITE, verify both
+ * succeed. Also validates that the QMP dispatcher accepts the
+ * virtio-scsi-pci wrapper QOM path (find_virtio_scsi_child walk).
+ */
+static void test_iothread_vq_mapping_rebind(void *obj, void *data,
+                                            QGuestAllocator *t_alloc)
+{
+    QVirtioSCSIPCI *scsi_pci = obj;
+    QVirtioSCSI *scsi = &scsi_pci->scsi;
+    QTestState *qts = scsi_pci->pci_vdev.pdev->bus->qts;
+    QVirtioSCSIQueues *vs;
+    QDict *rsp;
+    const uint8_t write_cdb[VIRTIO_SCSI_CDB_SIZE] = {
+        /* WRITE(10) to LBA 0, transfer length 1 */
+        0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00
+    };
+    uint8_t buf[512] = { 0 };
+    uint8_t response;
+
+    alloc = t_alloc;
+    vs = qvirtio_scsi_init(scsi->vdev);
+
+    /* First WRITE with the initial mapping (iot0->vq0, iot1->vq1). */
+    response = virtio_scsi_do_command(vs, write_cdb, NULL, 0, buf, 512, NULL);
+    g_assert_cmphex(response, ==, 0);
+
+    /*
+     * Swap the mapping: iot1 owns vq0, iot0 owns vq1. QMP dispatcher
+     * accepts the containing PCI wrapper QOM path.
+     */
+    rsp = qtest_qmp(qts,
+                    "{ 'execute': 'x-virtio-scsi-set-iothread-vq-mapping',"
+                    "  'arguments': {"
+                    "    'path': '/machine/peripheral/vsdev',"
+                    "    'iothread-vq-mapping': ["
+                    "      { 'iothread': 'iot1', 'vqs': [0] },"
+                    "      { 'iothread': 'iot0', 'vqs': [1] } ] } }");
+    g_assert(qdict_haskey(rsp, "return"));
+    qobject_unref(rsp);
+
+    /* Second WRITE after the swap must still complete on the new ctx. */
+    response = virtio_scsi_do_command(vs, write_cdb, NULL, 0, buf, 512, NULL);
+    g_assert_cmphex(response, ==, 0);
+
+    qvirtio_scsi_pci_free(vs);
+}
+
+/*
+ * Reject a bogus mapping (references a non-existent iothread) and
+ * verify that the device is still usable afterwards.
+ */
+static void test_iothread_vq_mapping_reject(void *obj, void *data,
+                                            QGuestAllocator *t_alloc)
+{
+    QVirtioSCSIPCI *scsi_pci = obj;
+    QVirtioSCSI *scsi = &scsi_pci->scsi;
+    QTestState *qts = scsi_pci->pci_vdev.pdev->bus->qts;
+    QVirtioSCSIQueues *vs;
+    QDict *rsp;
+    const uint8_t write_cdb[VIRTIO_SCSI_CDB_SIZE] = {
+        0x2a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00
+    };
+    uint8_t buf[512] = { 0 };
+    uint8_t response;
+
+    alloc = t_alloc;
+    vs = qvirtio_scsi_init(scsi->vdev);
+
+    /* iothread "does-not-exist" is not defined; validation must reject. */
+    rsp = qtest_qmp(qts,
+                    "{ 'execute': 'x-virtio-scsi-set-iothread-vq-mapping',"
+                    "  'arguments': {"
+                    "    'path': '/machine/peripheral/vsdev',"
+                    "    'iothread-vq-mapping': ["
+                    "      { 'iothread': 'does-not-exist', 'vqs': [0] },"
+                    "      { 'iothread': 'iot0', 'vqs': [1] } ] } }");
+    g_assert(qdict_haskey(rsp, "error"));
+    qobject_unref(rsp);
+
+    /* Device must still be usable with the original mapping. */
+    response = virtio_scsi_do_command(vs, write_cdb, NULL, 0, buf, 512, NULL);
+    g_assert_cmphex(response, ==, 0);
+
+    qvirtio_scsi_pci_free(vs);
+}
+
+/*
+ * Smoke test for x-query-prometheus-metrics: run it and verify a few
+ * well-known metric families are present in the returned text blob.
+ */
+static void test_query_prometheus_metrics(void *obj, void *data,
+                                          QGuestAllocator *t_alloc)
+{
+    QVirtioSCSIPCI *scsi_pci = obj;
+    QTestState *qts = scsi_pci->pci_vdev.pdev->bus->qts;
+    QDict *rsp, *rsp_ret;
+    const char *text;
+
+    rsp = qtest_qmp(qts, "{ 'execute': 'x-query-prometheus-metrics' }");
+    g_assert(qdict_haskey(rsp, "return"));
+    rsp_ret = qdict_get_qdict(rsp, "return");
+    g_assert(qdict_haskey(rsp_ret, "human-readable-text"));
+    text = qdict_get_str(rsp_ret, "human-readable-text");
+
+    g_assert_nonnull(strstr(text, "qemu_iothread_info"));
+    g_assert_nonnull(strstr(text, "qemu_virtio_scsi_num_queues"));
+    g_assert_nonnull(strstr(text, "qemu_virtio_scsi_vq_iothread"));
+
+    qobject_unref(rsp);
+}
+
 static void *virtio_scsi_hotplug_setup(GString *cmd_line, void *arg)
 {
     g_string_append(cmd_line,
@@ -384,6 +499,16 @@ static void *virtio_scsi_setup_iothread(GString *cmd_line, void *arg)
     return arg;
 }
 
+static void *virtio_scsi_setup_iothread_vq_mapping(GString *cmd_line, void *arg)
+{
+    g_string_append(cmd_line,
+                    " -object iothread,id=iot0"
+                    " -object iothread,id=iot1"
+                    " -blockdev driver=null-co,read-zeroes=on,node-name=null0"
+                    " -device scsi-hd,drive=null0");
+    return arg;
+}
+
 static void register_virtio_scsi_test(void)
 {
     QOSGraphTestOptions opts = { };
@@ -415,6 +540,35 @@ static void register_virtio_scsi_test(void)
     };
     qos_add_test("iothread-virtio-error", "virtio-scsi-pci",
                  test_iothread_virtio_error, &opts);
+
+    opts.before = virtio_scsi_setup_iothread_vq_mapping;
+    opts.edge = (QOSGraphEdgeOptions) {
+        .extra_device_opts =
+            "id=vsdev,num_queues=2,"
+            "iothread-vq-mapping.0.iothread=iot0,"
+            "iothread-vq-mapping.0.vqs.0=0,"
+            "iothread-vq-mapping.1.iothread=iot1,"
+            "iothread-vq-mapping.1.vqs.0=1",
+    };
+    qos_add_test("iothread-vq-mapping-rebind", "virtio-scsi-pci",
+                 test_iothread_vq_mapping_rebind, &opts);
+
+    opts.before = virtio_scsi_setup_iothread_vq_mapping;
+    opts.edge = (QOSGraphEdgeOptions) {
+        .extra_device_opts =
+            "id=vsdev,num_queues=2,"
+            "iothread-vq-mapping.0.iothread=iot0,"
+            "iothread-vq-mapping.0.vqs.0=0,"
+            "iothread-vq-mapping.1.iothread=iot1,"
+            "iothread-vq-mapping.1.vqs.0=1",
+    };
+    qos_add_test("iothread-vq-mapping-reject", "virtio-scsi-pci",
+                 test_iothread_vq_mapping_reject, &opts);
+
+    opts.before = NULL;
+    opts.edge = (QOSGraphEdgeOptions) { 0 };
+    qos_add_test("query-prometheus-metrics", "virtio-scsi",
+                 test_query_prometheus_metrics, &opts);
 }
 
 libqos_init(register_virtio_scsi_test);
