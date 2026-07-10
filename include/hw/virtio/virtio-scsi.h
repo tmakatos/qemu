@@ -90,18 +90,6 @@ struct VirtIOSCSI {
 
     QemuMutex ctrl_lock; /* protects ctrl_vq */
 
-    /*
-     * Per-cmd-VQ used-ring lock. Indexed by [0, num_queues). With
-     * iothread-vq-mapping a request popped on cmd_vqs[i]'s iothread
-     * can be dispatched to a BlockBackend that lives on a different
-     * iothread (see virtio_scsi_pick_aio_context()); the iSCSI/block
-     * completion then runs on the BB's iothread and calls
-     * virtqueue_push() on cmd_vqs[i]. Without a per-VQ lock those
-     * concurrent writes corrupt the used ring (the cmd-VQ path
-     * previously assumed a single owning iothread).
-     */
-    QemuMutex *cmd_vq_locks;
-
     /* Fields for dataplane below */
     AioContext **vq_aio_context; /* per-virtqueue AioContext pointer */
 
