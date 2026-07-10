@@ -11,7 +11,7 @@
 #include "qemu/bitmap.h"
 #include "hw/virtio/iothread-vq-mapping.h"
 
-static bool
+bool
 iothread_vq_mapping_validate(IOThreadVirtQueueMappingList *list, uint16_t
         num_queues, Error **errp)
 {

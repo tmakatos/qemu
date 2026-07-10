@@ -34,6 +34,23 @@ bool iothread_vq_mapping_apply(
         Error **errp);
 
 /**
+ * iothread_vq_mapping_validate:
+ * @list: The mapping of virtqueues to IOThreads.
+ * @num_queues: Total number of virtqueues to validate against.
+ * @errp: If an error occurs, a pointer to the area to store the error.
+ *
+ * Check that @list is a valid iothread-vq-mapping: no duplicate IOThreads,
+ * no out-of-range or duplicate vq indices, and every vq in [0, @num_queues)
+ * is assigned exactly once (when explicit vqs are used).
+ *
+ * Returns: %true on success, %false on failure.
+ */
+bool iothread_vq_mapping_validate(
+        IOThreadVirtQueueMappingList *list,
+        uint16_t num_queues,
+        Error **errp);
+
+/**
  * iothread_vq_mapping_cleanup:
  * @list: The mapping of virtqueues to IOThreads.
  *
