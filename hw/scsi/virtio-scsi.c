@@ -719,6 +719,20 @@ static void virtio_scsi_handle_ctrl(VirtIODevice *vdev, VirtQueue *vq)
     virtio_scsi_handle_ctrl_vq(s, vq);
 }
 
+/*
+ * Look up the per-VQ used-ring lock for a request whose vq is one of
+ * the command VQs. Safe to call from any iothread; the lock array is
+ * allocated at device realize and freed at device unrealize.
+ */
+static QemuMutex *virtio_scsi_cmd_vq_lock(VirtIOSCSIReq *req)
+{
+    VirtIOSCSI *s = req->dev;
+    uint32_t n = virtio_get_queue_index(req->vq) - VIRTIO_SCSI_VQ_NUM_FIXED;
+
+    assert(n < VIRTIO_SCSI_COMMON(s)->conf.num_queues);
+    return &s->cmd_vq_locks[n];
+}
+
 static void virtio_scsi_complete_cmd_req(VirtIOSCSIReq *req)
 {
     trace_virtio_scsi_cmd_resp(virtio_scsi_get_lun(req->req.cmd.lun),
@@ -729,7 +743,14 @@ static void virtio_scsi_complete_cmd_req(VirtIOSCSIReq *req)
      * in virtio_scsi_command_complete.
      */
     req->resp_size = sizeof(VirtIOSCSICmdResp);
-    virtio_scsi_complete_req(req, NULL);
+    /*
+     * With BBs distributed across iothreads (see
+     * virtio_scsi_pick_aio_context()), this completion may run on a
+     * different iothread than the one that popped from req->vq. Take
+     * the per-VQ used-ring lock to serialise virtqueue_push() against
+     * pops / completions happening on the owning iothread.
+     */
+    virtio_scsi_complete_req(req, virtio_scsi_cmd_vq_lock(req));
 }
 
 static void virtio_scsi_command_failed(SCSIRequest *r)
@@ -864,7 +885,12 @@ static int virtio_scsi_handle_cmd_req_prepare(VirtIOSCSI *s, VirtIOSCSIReq *req,
             virtio_scsi_fail_cmd_req(req);
             return -ENOTSUP;
         } else {
-            virtio_scsi_bad_req(req, NULL);
+            /*
+             * virtqueue_detach_element() inside bad_req touches the
+             * same cmd VQ that completions from other iothreads may be
+             * pushing to; take the per-VQ lock.
+             */
+            virtio_scsi_bad_req(req, virtio_scsi_cmd_vq_lock(req));
             return -EINVAL;
         }
     }
@@ -910,6 +936,11 @@ static void virtio_scsi_handle_cmd_vq(VirtIOSCSI *s, VirtQueue *vq)
     VirtIOSCSIReq *req, *next;
     int ret = 0;
     bool suppress_notifications = virtio_queue_get_notification(vq);
+    uint32_t vq_idx = virtio_get_queue_index(vq) - VIRTIO_SCSI_VQ_NUM_FIXED;
+    QemuMutex *vq_lock;
+
+    assert(vq_idx < VIRTIO_SCSI_COMMON(s)->conf.num_queues);
+    vq_lock = &s->cmd_vq_locks[vq_idx];
 
     QTAILQ_HEAD(, VirtIOSCSIReq) reqs = QTAILQ_HEAD_INITIALIZER(reqs);
 
@@ -921,7 +952,7 @@ static void virtio_scsi_handle_cmd_vq(VirtIOSCSI *s, VirtQueue *vq)
             virtio_queue_set_notification(vq, 0);
         }
 
-        while ((req = virtio_scsi_pop_req(s, vq, cdb_size, NULL))) {
+        while ((req = virtio_scsi_pop_req(s, vq, cdb_size, vq_lock))) {
             ret = virtio_scsi_handle_cmd_req_prepare(s, req, cdb_size);
             if (!ret) {
                 QTAILQ_INSERT_TAIL(&reqs, req, next);
@@ -932,7 +963,14 @@ static void virtio_scsi_handle_cmd_vq(VirtIOSCSI *s, VirtQueue *vq)
                     QTAILQ_REMOVE(&reqs, req, next);
                     defer_call_end();
                     scsi_req_unref(req->sreq);
+                    /*
+                     * detach_element mutates the avail/used rings of
+                     * req->vq; serialise against concurrent push from
+                     * BB-owning iothreads.
+                     */
+                    qemu_mutex_lock(vq_lock);
                     virtqueue_detach_element(req->vq, &req->elem, 0);
+                    qemu_mutex_unlock(vq_lock);
                     virtio_scsi_free_req(req);
                 }
             }
@@ -1326,7 +1364,9 @@ static void virtio_scsi_device_realize(DeviceState *dev, Error **errp)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VirtIOSCSI *s = VIRTIO_SCSI(dev);
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(dev);
     Error *err = NULL;
+    uint32_t i;
 
     qemu_mutex_init(&s->ctrl_lock);
     qemu_mutex_init(&s->event_lock);
@@ -1339,6 +1379,16 @@ static void virtio_scsi_device_realize(DeviceState *dev, Error **errp)
     if (err != NULL) {
         error_propagate(errp, err);
         return;
+    }
+
+    /*
+     * vs->conf.num_queues is final at this point (common_realize fixes
+     * up VIRTIO_SCSI_AUTO_NUM_QUEUES and rejects 0 / out-of-range
+     * values).
+     */
+    s->cmd_vq_locks = g_new(QemuMutex, vs->conf.num_queues);
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        qemu_mutex_init(&s->cmd_vq_locks[i]);
     }
 
     scsi_bus_init_named(&s->bus, sizeof(s->bus), dev,
@@ -1368,9 +1418,24 @@ void virtio_scsi_common_unrealize(DeviceState *dev)
 static void virtio_scsi_device_unrealize(DeviceState *dev)
 {
     VirtIOSCSI *s = VIRTIO_SCSI(dev);
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(dev);
+    uint32_t i;
 
     virtio_scsi_dataplane_cleanup(s);
     qbus_set_hotplug_handler(BUS(&s->bus), NULL);
+
+    /*
+     * Destroy per-cmd-VQ locks before common_unrealize frees cmd_vqs.
+     * Lock array size is fixed at realize time (vs->conf.num_queues).
+     */
+    if (s->cmd_vq_locks) {
+        for (i = 0; i < vs->conf.num_queues; i++) {
+            qemu_mutex_destroy(&s->cmd_vq_locks[i]);
+        }
+        g_free(s->cmd_vq_locks);
+        s->cmd_vq_locks = NULL;
+    }
+
     virtio_scsi_common_unrealize(dev);
     qemu_mutex_destroy(&s->event_lock);
     qemu_mutex_destroy(&s->ctrl_lock);
