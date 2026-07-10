@@ -128,4 +128,12 @@ void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
                                          IOThreadVirtQueueMappingList *map,
                                          Error **errp);
 
+/*
+ * Pick the AioContext that a LUN's BlockBackend should live on.
+ * Defined in hw/scsi/virtio-scsi.c and re-used by the runtime
+ * iothread-vq-mapping rebind path. (SCSIDevice declared via
+ * <hw/scsi/scsi.h> included above.)
+ */
+AioContext *virtio_scsi_pick_aio_context(VirtIOSCSI *s, SCSIDevice *sd);
+
 #endif /* QEMU_VIRTIO_SCSI_H */

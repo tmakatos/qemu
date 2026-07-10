@@ -429,7 +429,7 @@ void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
     }
 
     /*
-     * Re-home each LUN's BlockBackend to the new "primary" command-queue
+     * Re-home each LUN's BlockBackend to its picked command-queue
      * AioContext BEFORE reattaching host notifiers.
      *
      * The order matters: virtio_queue_aio_attach_host_notifier() kicks the
@@ -438,11 +438,17 @@ void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
      * BB still lives on the old iothread's ctx at that point, the blk_aio_*
      * dispatch crosses threads; the completion then runs on the OLD ctx and
      * calls virtqueue_push() on a VQ whose AioContext is now the NEW ctx.
-     * The cmd-VQ completion path takes no lock (it assumes a single owning
-     * iothread), so two threads end up writing to the same used-ring slot
-     * and the guest observes spurious / duplicated descriptor indices
-     * ("request id N is not head"). Moving the BBs first ensures the whole
-     * post-rebind data path is single-threaded on the new ctx.
+     * Until the per-cmd-VQ used-ring lock landed (see VirtIOSCSI::
+     * cmd_vq_locks) this raced and corrupted the used ring; even with the
+     * lock we still want to minimise cross-iothread bouncing by moving the
+     * BBs into their target ctx synchronously here.
+     *
+     * Each LUN's target ctx is computed by virtio_scsi_pick_aio_context()
+     * using a stable per-LUN key, so the same LUN consistently lands on
+     * the same iothread across rebinds (modulo num_queues changes). This
+     * generalises the previous "pin everything to vq[0]'s ctx" policy and
+     * removes the per-disk dispatch tax that the old policy placed on
+     * whichever iothread happened to own vq[0].
      *
      * Matches virtio_scsi_hotplug(), and virtio-blk's start path which also
      * calls blk_set_aio_context() before virtio_blk_ioeventfd_attach().
@@ -451,10 +457,10 @@ void virtio_scsi_set_iothread_vq_mapping(VirtIOSCSI *s,
      * is sufficient; no rcu_read_lock() needed (blk_set_aio_context() can
      * yield during drain and must not run inside an RCU read section).
      */
-    new_ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED];
     QTAILQ_FOREACH(kid, &s->bus.qbus.children, sibling) {
         SCSIDevice *sd = SCSI_DEVICE(kid->child);
         if (sd->conf.blk) {
+            new_ctx = virtio_scsi_pick_aio_context(s, sd);
             int ret = blk_set_aio_context(sd->conf.blk, new_ctx, NULL);
             if (ret < 0) {
                 warn_report("virtio-scsi: failed to set AioContext "

@@ -1183,19 +1183,61 @@ static void virtio_scsi_pre_hotplug(HotplugHandler *hotplug_dev,
     sd->hba_supports_iothread = true;
 }
 
+/*
+ * Pick the AioContext that a LUN's BlockBackend should live on.
+ *
+ * Previously every BB was pinned to vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED]
+ * (i.e. cmd_vqs[0]'s iothread). With iothread-vq-mapping the resulting
+ * "all I/O on one iothread" pattern means whichever iothread owns
+ * cmd_vqs[0] pays a per-disk dispatch+completion tax for every LUN,
+ * regardless of which command VQ the guest is actually exercising.
+ * Empirically (single-disk fio bs=128k qd=4 against /dev/sdb across
+ * an 8-VQ / 8-iothread VM) the cmd_vqs[0] iothread accumulates ~20%
+ * of the worker iothread's CPU on every run, and moving cmd_vqs[0]
+ * to a different iothread moves that tax with it.
+ *
+ * Spread BBs across the command-VQ iothreads by hashing on the LUN's
+ * SCSI id. The key is stable across reboots and rebinds, so a LUN
+ * keeps the same home iothread for its lifetime (modulo num_queues
+ * changes, which we don't support at runtime today).
+ *
+ * Properties:
+ *   - num_queues == 1 collapses to "cmd_vqs[0]'s ctx", matching the
+ *     pre-patch behaviour exactly.
+ *   - In the common one-disk-per-id layout (channel 0, lun 0) LUN N
+ *     lands on cmd_vqs[N % num_queues]'s iothread, so an N-disk VM
+ *     with num_queues >= N gets one BB per iothread.
+ *   - Callers that re-home BBs after a runtime VQ-to-iothread rebind
+ *     get the new ctx by simply re-evaluating this function.
+ */
+AioContext *virtio_scsi_pick_aio_context(VirtIOSCSI *s, SCSIDevice *sd)
+{
+    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(s);
+    uint32_t idx;
+
+    /*
+     * common_realize() rejects num_queues == 0, and this helper is only
+     * reachable once the device is realized.
+     */
+    assert(vs->conf.num_queues > 0);
+    idx = (uint32_t)sd->id % vs->conf.num_queues;
+    return s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED + idx];
+}
+
 static void virtio_scsi_hotplug(HotplugHandler *hotplug_dev, DeviceState *dev,
                                 Error **errp)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(hotplug_dev);
     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
-    AioContext *ctx = s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED];
     SCSIDevice *sd = SCSI_DEVICE(dev);
+    AioContext *ctx = virtio_scsi_pick_aio_context(s, sd);
 
     if (ctx != qemu_get_aio_context() && !s->dataplane_fenced) {
         /*
-         * Try to make the BlockBackend's AioContext match ours. Ignore failure
-         * because I/O will still work although block jobs and other users
-         * might be slower when multiple AioContexts use a BlockBackend.
+         * Try to make the BlockBackend's AioContext match the one we
+         * picked for this LUN. Ignore failure because I/O will still
+         * work although block jobs and other users might be slower
+         * when multiple AioContexts use a BlockBackend.
          */
         blk_set_aio_context(sd->conf.blk, ctx, NULL);
     }
@@ -1232,7 +1274,14 @@ static void virtio_scsi_hotunplug(HotplugHandler *hotplug_dev, DeviceState *dev,
 
     qdev_simple_device_unplug_cb(hotplug_dev, dev, errp);
 
-    if (s->vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED] != qemu_get_aio_context()) {
+    /*
+     * Detach from whichever iothread we put the BB on. Before this
+     * patch we keyed off vq_aio_context[VIRTIO_SCSI_VQ_NUM_FIXED];
+     * now BBs may live on any cmd-VQ iothread, so consult the BB
+     * directly.
+     */
+    if (sd->conf.blk &&
+        blk_get_aio_context(sd->conf.blk) != qemu_get_aio_context()) {
         /* If other users keep the BlockBackend in the iothread, that's ok */
         blk_set_aio_context(sd->conf.blk, qemu_get_aio_context(), NULL);
     }
