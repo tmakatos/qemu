@@ -18,6 +18,7 @@
 #include "qobject/qobject.h"
 #include "qobject/qjson.h"
 #include "hw/virtio/vhost-user.h"
+#include "hw/virtio/virtio-scsi.h"
 
 #include "standard-headers/linux/virtio_ids.h"
 #include "standard-headers/linux/vhost_types.h"
@@ -806,4 +807,44 @@ VirtVhostQueueStatus *qmp_x_query_virtio_vhost_queue_status(const char *path,
     status->used_size = hdev->vqs[queue].used_size;
 
     return status;
+}
+
+static int find_virtio_scsi_child(Object *child, void *opaque)
+{
+    Object **out = opaque;
+    Object *cast = object_dynamic_cast(child, TYPE_VIRTIO_SCSI);
+    if (cast && DEVICE(cast)->realized) {
+        *out = cast;
+        return 1;
+    }
+    return 0;
+}
+
+void qmp_x_virtio_scsi_set_iothread_vq_mapping(
+        const char *path,
+        IOThreadVirtQueueMappingList *iothread_vq_mapping,
+        Error **errp)
+{
+    Object *obj, *scsi = NULL;
+
+    obj = object_resolve_path(path, NULL);
+    if (!obj) {
+        error_setg(errp, "Path '%s' not found", path);
+        return;
+    }
+
+    /* Accept either a TYPE_VIRTIO_SCSI directly or its containing PCI wrapper. */
+    scsi = object_dynamic_cast(obj, TYPE_VIRTIO_SCSI);
+    if (!scsi) {
+        object_child_foreach(obj, find_virtio_scsi_child, &scsi);
+    }
+    if (!scsi || !DEVICE(scsi)->realized) {
+        error_setg(errp,
+                   "Path '%s' does not resolve to a realized virtio-scsi device",
+                   path);
+        return;
+    }
+
+    virtio_scsi_set_iothread_vq_mapping(VIRTIO_SCSI(scsi),
+                                        iothread_vq_mapping, errp);
 }
