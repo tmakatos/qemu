@@ -48,3 +48,9 @@ void qmp_x_virtio_scsi_set_iothread_vq_mapping(
 {
     error_setg(errp, "Virtio is disabled");
 }
+
+HumanReadableText *qmp_x_query_prometheus_metrics(Error **errp)
+{
+    error_setg(errp, "Virtio is disabled");
+    return NULL;
+}

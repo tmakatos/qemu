@@ -1018,6 +1018,26 @@
   'features': [ 'unstable' ] }
 
 ##
+# @x-query-prometheus-metrics:
+#
+# Return a Prometheus text-format snapshot of IOThread, virtio-scsi,
+# and block device metrics.  Intended for consumption by external
+# controllers that manage IOThread scaling.
+#
+# Features:
+#
+# @unstable: This command is experimental.  The metric set may change.
+#
+# Returns: Prometheus text exposition format wrapped in a
+#     HumanReadableText payload.
+#
+# Since: 10.1
+##
+{ 'command': 'x-query-prometheus-metrics',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
 # @GranuleMode:
 #
 # @4k: granule page size of 4KiB
